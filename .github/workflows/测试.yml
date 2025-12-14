@@ -1,4 +1,4 @@
-name: 正式版 Mesa (aarch64, Auto Update + Detailed Log)
+name: 测试版 Mesa (aarch64, Auto Update + Detailed Log)
 
 on:
   workflow_dispatch:
