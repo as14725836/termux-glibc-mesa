@@ -149,7 +149,7 @@ jobs:
             -Dvideo-codecs=all \
             -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
-            -Dtools=drm-shim,freedreno,virtio
+            -Dtools=drm-shim,freedreno
 
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
