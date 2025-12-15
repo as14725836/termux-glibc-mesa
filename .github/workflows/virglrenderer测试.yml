@@ -84,7 +84,7 @@ jobs:
           
           # 使用您指定的构建参数
           echo "配置构建..."
-          meson out -Dvenus=true
+          meson setup out -Dvenus=true
           
           echo "编译..."
           meson compile -C out
