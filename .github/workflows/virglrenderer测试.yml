@@ -1,0 +1,170 @@
+name: 测试版 VirGL Renderer (aarch64, Auto Update + Detailed Log)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'refs/tags/**'
+  schedule:
+    - cron: "0 22 * * *"
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      new_commit: ${{ steps.check.outputs.new_commit }}
+      latest_hash: ${{ steps.check.outputs.latest_hash }}
+    steps:
+      - name: 检查 VirGL Renderer 上游更新
+        id: check
+        run: |
+          echo "🔍 检查 VirGL Renderer 上游提交..."
+          LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/virgl/virglrenderer.git refs/heads/main | awk '{print $1}')
+          echo "最新上游提交: $LATEST_HASH"
+          STATE_FILE=".virglrenderer_latest_commit"
+          if [ -f "$STATE_FILE" ]; then
+            LAST_HASH=$(cat $STATE_FILE)
+          else
+            LAST_HASH=""
+          fi
+          echo "上次构建: $LAST_HASH"
+          if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
+            echo "new_commit=true" >> $GITHUB_OUTPUT
+            echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
+          else
+            echo "new_commit=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 显示构建环境信息
+        run: |
+          lsb_release -a || true
+          uname -a
+          lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
+          free -h
+          df -h
+
+      - name: 安装依赖
+        run: |
+          sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt update
+          sudo apt install -y \
+            meson ninja-build pkg-config \
+            libdrm-dev \
+            libepoxy-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            glslang-tools llvm-19 \
+            python3-pip
+          pip3 install --user mako
+
+      - name: 克隆 VirGL Renderer
+        run: |
+          echo "📥 克隆 VirGL Renderer 仓库..."
+          git clone https://gitlab.freedesktop.org/virgl/virglrenderer.git
+          cd virglrenderer
+          
+      - name: 构建 VirGL Renderer
+        run: |
+          echo "🔨 开始构建 VirGL Renderer..."
+          BUILD_START=$(date +%s)
+          
+          # 使用您指定的构建参数
+          echo "配置构建..."
+          meson out -Dvenus=true
+          
+          echo "编译..."
+          meson compile -C out
+          
+          echo "设置开发环境..."
+          meson devenv -C out
+          
+          BUILD_END=$(date +%s)
+          echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
+          
+          # 获取版本信息
+          GIT_HASH=$(git rev-parse --short HEAD)
+          if [ -f "VERSION" ]; then
+            VERSION=$(cat VERSION)
+          else
+            VERSION=$(date +%Y%m%d)-git-${GIT_HASH}
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+
+      - name: 打包构建产物
+        run: |
+          echo "📦 开始打包 VirGL Renderer 产物..."
+          cd virglrenderer
+          PACK_START=$(date +%s)
+          
+          # 创建临时安装目录
+          INSTALL_DIR=$(mktemp -d)
+          DESTDIR=$INSTALL_DIR ninja -C out install
+          
+          # 主库文件
+          TAR_NAME="termux-glibc-virglrenderer-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${TAR_NAME}" \
+            -C "$INSTALL_DIR" \
+            usr/lib/libvirglrenderer*.so* \
+            || echo "打包主要库文件"
+          
+          # 完整包（如果需要）
+          FULL_TAR="glibc-virglrenderer-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${FULL_TAR}" \
+            -C "$INSTALL_DIR" \
+            usr/
+          
+          # 清理临时目录
+          rm -rf "$INSTALL_DIR"
+          
+          cd ..
+          sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
+          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
+          
+          PACK_END=$(date +%s)
+          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+          echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
+          echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
+
+      - name: 上传构建产物到 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: virglrenderer-artifacts-${{ env.VERSION }}-aarch64
+          path: |
+            ${{ env.TAR_NAME }}
+            ${{ env.FULL_TAR }}
+            ${{ env.TAR_NAME }}.sha256
+            ${{ env.FULL_TAR }}.sha256
+
+      - name: 保存最新提交记录
+        if: ${{ needs.check-updates.outputs.latest_hash != '' }}
+        run: |
+          echo "${{ needs.check-updates.outputs.latest_hash }}" > .virglrenderer_latest_commit
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .virglrenderer_latest_commit || true
+          git commit -m "Update VirGL Renderer commit record" || true
+          git push || true
+
+      - name: 输出总结信息
+        run: |
+          echo "构建完成"
+          echo "版本: ${{ env.VERSION }}"
+          echo "提交: ${{ env.GIT_HASH }}"
+          echo "构建产物已保存到 Artifacts"
+          echo "- ${{ env.TAR_NAME }}"
+          echo "- ${{ env.FULL_TAR }}"
