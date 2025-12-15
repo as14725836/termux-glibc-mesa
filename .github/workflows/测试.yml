@@ -26,7 +26,6 @@ jobs:
           echo "🔍 检查 Mesa 上游提交..."
           LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
           echo "最新上游提交: $LATEST_HASH"
-
           STATE_FILE=".mesa_latest_commit"
           if [ -f "$STATE_FILE" ]; then
             LAST_HASH=$(cat $STATE_FILE)
@@ -34,14 +33,12 @@ jobs:
             LAST_HASH=""
           fi
           echo "上次构建: $LAST_HASH"
-
           if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
             echo "new_commit=true" >> $GITHUB_OUTPUT
             echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
           else
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
-
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
@@ -58,7 +55,6 @@ jobs:
           lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
           free -h
           df -h
-
       - name: 安装依赖
         run: |
           sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
@@ -67,16 +63,13 @@ jobs:
               libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
               libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
               libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
-
           pip3 install --user meson ninja mako
-
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
           git checkout adreno-main
-
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
@@ -85,35 +78,12 @@ jobs:
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-          
-          echo "🔧 修改 vtest 协议头文件，适配 Termux"
-          # 检查文件是否存在
-          if [ -f "src/virtio/vtest/vtest_protocol.h" ]; then
-            echo "修改 vtest_protocol.h..."
-            sed -i 's|#define VTEST_DEFAULT_SOCKET_NAME "/tmp/.virgl_test"|#define VTEST_DEFAULT_SOCKET_NAME "/data/data/com.termux/files/usr/tmp/.venus_socket"|' src/virtio/vtest/vtest_protocol.h
-            echo "修改后的内容:"
-            grep -n "VTEST_DEFAULT_SOCKET_NAME" src/virtio/vtest/vtest_protocol.h
-          else
-            echo "查找 vtest_protocol.h 文件..."
-            find . -name "vtest_protocol.h" -type f | head -5
-            # 尝试在其他位置查找
-            if find . -name "vtest_protocol.h" -type f | grep -q .; then
-              for file in $(find . -name "vtest_protocol.h" -type f); do
-                echo "修改 $file"
-                sed -i 's|#define VTEST_DEFAULT_SOCKET_NAME "/tmp/.virgl_test"|#define VTEST_DEFAULT_SOCKET_NAME "/data/data/com.termux/files/usr/tmp/.venus_socket"|' "$file"
-              done
-            else
-              echo "未找到 vtest_protocol.h 文件，可能路径不同"
-            fi
-          fi
-
       - name: 构建 Mesa
         run: |
           cd mesa
           BUILD_START=$(date +%s)
           sudo mkdir -p /data/data/com.termux/files/usr/glibc
           sudo chmod 777 -R /data
-
           mkdir -p builddir
           meson setup builddir \
             --libdir=lib \
@@ -144,87 +114,36 @@ jobs:
             -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast,virtio \
+            -Dvulkan-drivers=freedreno,swrast \
             -Dfreedreno-kmds=msm,kgsl \
             -Dvideo-codecs=all \
             -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno
-
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
-
           BUILD_END=$(date +%s)
           echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
-
           VERSION=$(cat VERSION)
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
-          
-          echo "🔍 检查构建的 virtio 相关文件:"
-          find builddir -name "*virtio*" -o -name "*venus*" -o -name "*virgl*" | head -20
-
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
           cd mesa
           PACK_START=$(date +%s)
-
           TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
-          # 包含更多驱动文件
-          tar -czvf "../${TAR_NAME}" \
-            -C builddir/src/freedreno/vulkan libvulkan_freedreno.so \
-            -C builddir/src/virtio/vulkan libvulkan_virtio.so 2>/dev/null || echo "libvulkan_virtio.so 可能不存在" \
-            -C builddir/src/virtio/venus/src libvulkan_venus.so 2>/dev/null || echo "libvulkan_venus.so 可能不存在"
-
+          tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
           FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
-
           cd ..
           sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
           sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
-
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
-
           echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
           echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
-
-      - name: 生成 ICD 配置文件
-        run: |
-          echo "📄 生成 Vulkan ICD 配置文件..."
-          mkdir -p icd_configs
-          
-          # 为 freedreno 生成 ICD 配置
-          cat > icd_configs/freedreno_icd.aarch64.json << EOF
-          {
-              "file_format_version": "1.0.0",
-              "ICD": {
-                  "library_path": "/data/data/com.termux/files/usr/glibc/lib/libvulkan_freedreno.so",
-                  "api_version": "1.3.0"
-              }
-          }
-          EOF
-          
-          # 为 virtio/venus 生成 ICD 配置
-          cat > icd_configs/virtio_icd.aarch64.json << EOF
-          {
-              "file_format_version": "1.0.0",
-              "ICD": {
-                  "library_path": "/data/data/com.termux/files/usr/glibc/lib/libvulkan_venus.so",
-                  "api_version": "1.3.0"
-              },
-              "venus": {
-                  "socket_path": "/data/data/com.termux/files/usr/tmp/.venus_socket"
-              }
-          }
-          EOF
-          
-          echo "生成的 ICD 配置文件:"
-          ls -la icd_configs/
-          cat icd_configs/virtio_icd.aarch64.json
-
       - name: 上传构建产物到 Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -234,8 +153,6 @@ jobs:
             ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
-            icd_configs/
-
       - name: 保存最新提交记录
         if: ${{ needs.check-updates.outputs.latest_hash != '' }}
         run: |
@@ -245,3 +162,11 @@ jobs:
           git add .mesa_latest_commit || true
           git commit -m "Update Mesa commit record" || true
           git push || true
+      - name: 输出总结信息
+        run: |
+          echo "构建完成"
+          echo "版本: ${{ env.VERSION }}"
+          echo "提交: ${{ env.GIT_HASH }}"
+          echo "构建产物已保存到 Artifacts"
+          echo "- ${{ env.TAR_NAME }}"
+          echo "- ${{ env.FULL_TAR }}"
