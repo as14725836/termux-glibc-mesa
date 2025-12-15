@@ -141,7 +141,7 @@ jobs:
             -Dmicrosoft-clc=disabled \
             -Dgallium-rusticl=false \
             -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe,virpipe \
+            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno,swrast,virtio \
