@@ -86,12 +86,6 @@ jobs:
           git checkout main
           git pull origin main
 
-      - name: Apply KGSL experimental patch
-        run: |
-          set -e
-          cd mesa
-          patch -p1 --forward < ../0014-freedreno-kgsl-experimental.patch
-
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Aren't (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
