@@ -86,8 +86,14 @@ jobs:
           git checkout main
           git pull origin main
 
+      - name: Apply KGSL experimental patch
+        run: |
+          set -e
+          cd mesa
+          patch -p1 --forward < ../0014-freedreno-kgsl-experimental.patch
+
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/Turnip Aren't (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
 
@@ -157,9 +163,7 @@ jobs:
         run: |
           echo "📦 开始打包 Mesa 产物..."
           cd mesa
-          PACK_START=$(date +%s)
-
-          # === 1️⃣ Vulkan 驱动最小包 ===
+              # === 1️⃣ Vulkan 驱动最小包 ===
           TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
 
