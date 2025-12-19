@@ -27,7 +27,6 @@ jobs:
           echo "🔍 检查 Mesa 上游提交..."
           LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
           echo "最新上游提交: $LATEST_HASH"
-
           STATE_FILE=".mesa_latest_commit"
           if [ -f "$STATE_FILE" ]; then
             LAST_HASH=$(cat $STATE_FILE)
@@ -35,7 +34,6 @@ jobs:
             LAST_HASH=""
           fi
           echo "上次构建: $LAST_HASH"
-
           if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
             echo "✅ 检测到新提交，触发构建"
             echo "new_commit=true" >> $GITHUB_OUTPUT
@@ -44,7 +42,6 @@ jobs:
             echo "❎ 没有新提交，跳过构建"
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
-
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
@@ -65,7 +62,6 @@ jobs:
           free -h
           echo "磁盘空间:"
           df -h
-
       - name: 安装依赖
         run: |
           echo "📦 安装 Mesa 构建依赖..."
@@ -77,7 +73,6 @@ jobs:
               libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
           echo "✅ 依赖安装完成"
-
       - name: 克隆 Mesa 仓库
         run: |
           echo "📥 克隆 Mesa 仓库..."
@@ -85,22 +80,18 @@ jobs:
           cd mesa
           git checkout main
           git pull origin main
-
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          sed -i 's/Turnip Aren't (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-
           echo "🧾 最新提交:"
           git log -1 --oneline --decorate
-
       - name: 构建 Mesa
         run: |
           cd mesa
           BUILD_START=$(date +%s)
           sudo mkdir -p /data/data/com.termux/files/usr/glibc
           sudo chmod 777 -R /data
-
           echo "⚙️ 使用 Meson 配置构建..."
           mkdir -p builddir
           meson setup builddir \
@@ -138,47 +129,39 @@ jobs:
             -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno
-
           echo "🧱 开始编译..."
           ninja -C builddir -j$(nproc)
           echo "📦 安装到 glibc 目录..."
           ninja -C builddir install
-
           BUILD_END=$(date +%s)
           DURATION=$((BUILD_END - BUILD_START))
           echo "🕒 构建耗时: ${DURATION} 秒"
-
           VERSION=$(cat VERSION)
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
-
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
           cd mesa
-              # === 1️⃣ Vulkan 驱动最小包 ===
+          PACK_START=$(date +%s)
+          # === 1️⃣ Vulkan 驱动最小包 ===
           TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
-
           # === 2️⃣ 完整 glibc Mesa 环境包 ===
           FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
-
           # === 3️⃣ 生成 SHA256 校验文件 ===
           cd ..
           sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
           sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
-
           PACK_END=$(date +%s)
           PACK_DUR=$((PACK_END - PACK_START))
           echo "🕒 打包耗时: ${PACK_DUR} 秒"
-
           echo "📂 输出文件:"
           du -h ${TAR_NAME} ${FULL_TAR} | sort -h
           echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
           echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
-
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
@@ -188,7 +171,6 @@ jobs:
             ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
-
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -220,7 +202,6 @@ jobs:
           git add .mesa_latest_commit || true
           git commit -m "Update Mesa commit record to ${{ needs.check-updates.outputs.latest_hash }}" || echo "No new commit to save"
           git push || echo "⚠️ 推送失败（可能无更改）"
-
       - name: 输出总结信息
         run: |
           echo "✅ Mesa 构建与打包完成"
