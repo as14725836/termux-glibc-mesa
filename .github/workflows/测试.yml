@@ -76,7 +76,7 @@ jobs:
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
       - name: 构建 Mesa
         run: |
-          cd mesa
+          cd mesa-kgsl-25.2.5
           BUILD_START=$(date +%s)
           sudo mkdir -p /data/data/com.termux/files/usr/glibc
           sudo chmod 777 -R /data
