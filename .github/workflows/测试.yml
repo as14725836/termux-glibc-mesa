@@ -67,13 +67,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
-          cd mesa
-          git checkout turnip-main
-          echo "🧾 当前分支和提交:"
-          git branch -v
-          git log -1 --oneline --decorate
-        
+          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git
+          cd mesa-kgsl-25.2.5
+         
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
