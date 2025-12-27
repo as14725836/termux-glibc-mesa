@@ -106,7 +106,6 @@ jobs:
             -Dgallium-drivers=zink,freedreno \
             -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=msm,kgsl \
-            -Dgallium-vdpau=disabled \
             -Dvideo-codecs=all \
             -Dtools=drm-shim,freedreno \
             -Ddefault_library=shared \
