@@ -87,46 +87,29 @@ jobs:
         run: |
           cd mesa
           BUILD_START=$(date +%s)
-          sudo mkdir -p /data/data/com.termux/files/usr/glibc
-          sudo chmod 777 -R /data
+          sudo mkdir -p /opt/mesa
+          sudo chmod 777 -R /opt
           
           mkdir -p builddir
           meson setup builddir \
-            --libdir=lib \
-            -Dprefix=/data/data/com.termux/files/usr/glibc \
-            -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
+            -Dprefix=/opt/mesa/ \
             -Dplatforms=x11 \
-            -Degl-native-platform=x11 \
+            -Dopengl=true \
             -Dglx=dri \
             -Dglx-direct=true \
-            -Dopengl=true \
-            -Dgles1=enabled \
-            -Dgles2=enabled \
-            -Dglvnd=disabled \
-            -Degl=enabled \
-            -Dllvm=enabled \
-            -Dshared-llvm=enabled \
-            -Dshader-cache=enabled \
-            -Dshared-glapi=enabled \
+            -Dglvnd=enabled \
+            -Dgbm=enabled \
+            -Dllvm=disabled \
+            -Dshared-llvm=disabled \
             -Dxlib-lease=enabled \
             -Dvulkan-beta=true \
-            -Dlibunwind=disabled \
-            -Dvalgrind=disabled \
-            -Dmicrosoft-clc=disabled \
-            -Dgallium-rusticl=false \
-            -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
-            -Dgallium-rusticl-enable-drivers=freedreno \
-            -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast \
+            -Dgallium-drivers=zink,freedreno \
+            -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=msm,kgsl \
+            -Dgallium-vdpau=disabled \
             -Dvideo-codecs=all \
-            -Dmediafoundation-codecs=all \
-            -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
-            -Db_ndebug=true \
+            -Ddefault_library=shared \
             -Db_lto=true \
             -Dstrip=true
           
@@ -147,11 +130,11 @@ jobs:
           cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
+          TAR_NAME="proot-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
           
-          FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
+          FULL_TAR="proot-mesa-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${FULL_TAR}" -C /opt mesa
           
           cd ..
           sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
