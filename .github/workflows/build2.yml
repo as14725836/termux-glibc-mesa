@@ -87,7 +87,7 @@ jobs:
           git log -1 --oneline --decorate
       - name: 打入补丁
         run: |
-         patch -p1 < ../0020-freedreno-kgsl-experimental.patch
+         patch -p1 < 0020-freedreno-kgsl-experimental.patch
         
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
