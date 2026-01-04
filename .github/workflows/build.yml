@@ -83,8 +83,8 @@ jobs:
 
       - name: 补丁
         run: |
-         patch -p0 < 38808.patch
-         patch -p0 < 39124.patch
+         git apply -v 38808.patch
+         git apply -v 39124.patch
 
           
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
