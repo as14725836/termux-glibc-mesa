@@ -80,6 +80,13 @@ jobs:
           cd mesa
           git checkout main
           git pull origin main
+
+      - name: 补丁
+        run: |
+         patch -p1 < 38808.patch
+         patch -p1 < 39124.patch
+
+          
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
