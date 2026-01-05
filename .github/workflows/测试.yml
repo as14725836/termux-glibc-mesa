@@ -109,7 +109,6 @@ jobs:
             -Dvulkan-drivers=freedreno,wrapper \
             -Dfreedreno-kmds=msm,kgsl \
             -Dvideo-codecs=all \
-            -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
             -Db_ndebug=true \
