@@ -70,14 +70,7 @@ jobs:
           git clone https://github.com/Mateus2022/mesa-android-vulkan-wrapper.git
           cd mesa-android-vulkan-wrapper
       
-      - name: 自定义品牌
-        run: |
-          echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          cd mesa
-          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-      
+     
       - name: 构建 Mesa
         run: |
           cd mesa-android-vulkan-wrapper
