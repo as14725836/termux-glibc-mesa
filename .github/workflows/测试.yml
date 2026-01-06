@@ -115,9 +115,7 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
-            -Db_ndebug=true \
-            -Dc_args="-Wno-error=address-of-temporary" \
-            -Dcpp_args="-Wno-error=address-of-temporary -Wno-address-of-temporary"
+            -Db_ndebug=true
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
