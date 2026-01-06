@@ -69,7 +69,7 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           git clone https://gitlab.freedesktop.org/robclark/mesa.git mesa
           cd mesa
-          git checkout adreno-main
+          git checkout tu/gen8
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
