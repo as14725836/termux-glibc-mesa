@@ -73,6 +73,11 @@ jobs:
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
+
+      - name: Setup environment
+        run: |
+          export CC=gcc
+          export CXX=g++
       
       - name: 自定义品牌
         run: |
