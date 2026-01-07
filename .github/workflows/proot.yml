@@ -137,7 +137,7 @@ jobs:
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
-          cd mesa
+          cd mesa-kgsl-25.2.5
           PACK_START=$(date +%s)
           
           TAR_NAME="proot-mesa-${VERSION}-aarch64.tar.gz"
