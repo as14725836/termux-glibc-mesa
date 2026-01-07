@@ -93,7 +93,7 @@ jobs:
             -Doptimization=3 \
             -Db_lto=true \
             -Dplatforms=x11,wayland \
-            -Degl-native-platform=x11,wayland \
+            -Degl-native-platform=wayland \
             -Dglx=dri \
             -Dglx-direct=true \
             -Dopengl=true \
