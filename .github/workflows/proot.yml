@@ -67,12 +67,8 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
-          cd mesa
-          git checkout adreno-main
-          echo "🧾 当前分支和提交:"
-          git branch -v
-          git log -1 --oneline --decorate
+          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git
+          cd mesa-kgsl-25.2.5
       
       - name: 自定义品牌
         run: |
@@ -84,7 +80,7 @@ jobs:
       
       - name: 构建 Mesa
         run: |
-          cd mesa
+          cd mesa-kgsl-25.2.5
           BUILD_START=$(date +%s)
           sudo mkdir -p /opt/mesa
           sudo chmod 777 -R /opt
