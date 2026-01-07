@@ -58,7 +58,7 @@ jobs:
         run: |
           sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
           sudo apt update
-          sudo apt install -y glslang-tools gcc g++ make libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
+          sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
             libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
             libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
             libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
@@ -67,13 +67,13 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/robclark/mesa.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout tu/gen8
+          git checkout adreno-main
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
-
+      
       - name: 自定义品牌
         run: |
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
@@ -94,28 +94,40 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
+            -Doptimization=3 \
+            -Db_lto=true \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
             -Dglx-direct=true \
             -Dopengl=true \
+            -Dgles1=enabled \
+            -Dgles2=enabled \
             -Dglvnd=disabled \
             -Degl=enabled \
             -Dllvm=enabled \
             -Dshared-llvm=enabled \
             -Dshader-cache=enabled \
+            -Dshared-glapi=enabled \
             -Dxlib-lease=enabled \
             -Dvulkan-beta=true \
             -Dlibunwind=disabled \
             -Dvalgrind=disabled \
             -Dmicrosoft-clc=disabled \
+            -Dgallium-rusticl=false \
+            -Dgallium-extra-hud=true \
             -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
+            -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno,swrast \
-            -Dfreedreno-kmds=kgsl \
+            -Dfreedreno-kmds=msm,kgsl \
+            -Dvideo-codecs=all \
+            -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
-            -Db_ndebug=true
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
