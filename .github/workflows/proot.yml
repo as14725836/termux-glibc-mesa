@@ -67,24 +67,20 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/robclark/mesa.git mesa
-          cd mesa
-          git checkout tu/gen8
-          echo "🧾 当前分支和提交:"
-          git branch -v
-          git log -1 --oneline --decorate
+          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git
+          cd mesa-kgsl-25.2.5
       
       - name: 自定义品牌
         run: |
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          cd mesa
+          cd mesa-kgsl-25.2.5
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
       
       - name: 构建 Mesa
         run: |
-          cd mesa
+          cd mesa-kgsl-25.2.5
           BUILD_START=$(date +%s)
           sudo mkdir -p /opt/mesa
           sudo chmod 777 -R /opt
@@ -94,7 +90,10 @@ jobs:
             --libdir=lib \
             -Dprefix=/opt/mesa \
             -Dbuildtype=release \
+            -Doptimization=3 \
+            -Db_lto=true \
             -Dplatforms=x11,wayland \
+            -Degl-native-platform=wayland \
             -Dglx=dri \
             -Dglx-direct=true \
             -Dopengl=true \
@@ -112,12 +111,17 @@ jobs:
             -Dvalgrind=disabled \
             -Dmicrosoft-clc=disabled \
             -Dgallium-rusticl=false \
+            -Dgallium-extra-hud=true \
             -Dgallium-drivers=zink,freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno \
-            -Dfreedreno-kmds=kgsl \
+            -Dfreedreno-kmds=msm,kgsl \
+            -Dvideo-codecs=all \
             -Dgbm=enabled \
-            -Dtools=drm-shim,freedreno
+            -Dtools=drm-shim,freedreno \
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
@@ -133,7 +137,7 @@ jobs:
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
-          cd mesa
+          cd mesa-kgsl-25.2.5
           PACK_START=$(date +%s)
           
           TAR_NAME="proot-mesa-${VERSION}-aarch64.tar.gz"
