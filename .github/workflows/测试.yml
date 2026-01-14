@@ -94,8 +94,6 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
@@ -122,12 +120,8 @@ jobs:
             -Dvulkan-drivers=freedreno,swrast \
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
-            -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
-            -Dtools=drm-shim,freedreno \
-            -Db_ndebug=true \
-            -Db_lto=true \
-            -Dstrip=true
+            -Dtools=drm-shim,freedreno
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
