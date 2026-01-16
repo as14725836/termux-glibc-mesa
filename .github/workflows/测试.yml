@@ -67,9 +67,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
+          git clone https://gitlab.freedesktop.org/PixelyIon/mesa.git mesa
           cd mesa
-          git checkout test/turnip-gen8
+          git checkout tu-newat
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
@@ -94,6 +94,8 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
+            -Doptimization=3 \
+            -Db_lto=true \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
@@ -118,10 +120,14 @@ jobs:
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno,swrast \
-            -Dfreedreno-kmds=kgsl \
+            -Dfreedreno-kmds=msm,kgsl \
             -Dvideo-codecs=all \
+            -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
-            -Dtools=drm-shim,freedreno
+            -Dtools=drm-shim,freedreno \
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
