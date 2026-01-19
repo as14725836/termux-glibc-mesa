@@ -69,7 +69,7 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/whitebelyash/mesa-tu8.git mesa
           cd mesa
-          git checkout tree/gen8-hacks
+          git checkout gen8-hacks
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
