@@ -208,38 +208,22 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
             -Dplatforms=x11 \
-            -Degl-native-platform=x11 \
             -Dglx=dri \
-            -Dglx-direct=true \
-            -Dopengl=true \
-            -Dgles1=enabled \
+            -Dgles1=disabled \
             -Dgles2=enabled \
             -Dglvnd=disabled \
             -Degl=enabled \
-            -Dllvm=enabled \
-            -Dshared-llvm=enabled \
-            -Dshader-cache=enabled \
-            -Dshared-glapi=enabled \
-            -Dxlib-lease=enabled \
-            -Dvulkan-beta=true \
             -Dlibunwind=disabled \
             -Dvalgrind=disabled \
             -Dmicrosoft-clc=disabled \
-            -Dgallium-rusticl=false \
-            -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
-            -Dgallium-rusticl-enable-drivers=freedreno \
-            -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast \
+            -Dgallium-drivers=zink,freedreno \
+            -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
-            -Dvideo-codecs=all \
-            -Dgbm=enabled \
-            -Db_ndebug=true \
-            -Db_lto=true \
-            -Dstrip=true
+            -Dintel-rt=disabled \
+            -Dgallium-mediafoundation=disabled \
+            -Dgallium-va=disabled \
+            -Dvulkan-layers=
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
           BUILD_END=$(date +%s)
@@ -248,7 +232,7 @@ jobs:
           VERSION=$(cat VERSION)
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+       ho "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
 
       - name: 打包构建产物
         run: |
