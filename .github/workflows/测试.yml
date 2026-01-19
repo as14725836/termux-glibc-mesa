@@ -84,7 +84,7 @@ jobs:
           cat > full_fixed_710_720.patch << 'EOF'
           --- a/src/freedreno/common/freedreno_devices.py
           +++ b/src/freedreno/common/freedreno_devices.py
-          @@ -1065,6 +1065,42 @@ add_gpus([
+          @@ -1065,6 +1065,46 @@ add_gpus([
                    raw_magic_regs = a730_raw_magic_regs,
                ))
            
@@ -97,6 +97,8 @@ jobs:
           +        num_ccu = 4,
           +        tile_align_w = 64,
           +        tile_align_h = 32,
+          +        tile_max_w = 1024,
+          +        tile_max_h = 1024,
           +        num_vsc_pipes = 32,
           +        cs_shared_mem_size = 32 * 1024,
           +        wave_granularity = 2,
@@ -115,6 +117,8 @@ jobs:
           +        num_ccu = 4,
           +        tile_align_w = 64,
           +        tile_align_h = 32,
+          +        tile_max_w = 1024,
+          +        tile_max_h = 1024,
           +        num_vsc_pipes = 32,
           +        cs_shared_mem_size = 32 * 1024,
           +        wave_granularity = 2,
@@ -148,12 +152,42 @@ jobs:
                  .chip_id = 0x00b207002000,
           EOF
           
-          # 应用补丁
-          if git apply full_fixed_710_720.patch; then
+          # 检查补丁文件并应用
+          echo "检查补丁格式..."
+          if git apply --check full_fixed_710_720.patch; then
+            echo "✅ 补丁格式正确，开始应用..."
+            git apply full_fixed_710_720.patch
             echo "✅ 补丁应用成功"
           else
-            echo "⚠️  补丁应用失败，尝试继续构建..."
+            echo "⚠️  补丁检查失败，尝试手动修复..."
+            
+            # 尝试手动修复
+            PY_FILE="src/freedreno/common/freedreno_devices.py"
+            echo "手动修复 Python 文件..."
+            
+            # 在 FD710 定义中添加 tile_max_w 和 tile_max_h
+            sed -i '/FD710/,/^[[:space:]]*))/ {
+                /num_vsc_pipes = 32,/a\        tile_max_w = 1024,\n        tile_max_h = 1024,
+            }' "$PY_FILE"
+            
+            # 在 FD720 定义中添加 tile_max_w 和 tile_max_h
+            sed -i '/FD720/,/^[[:space:]]*))/ {
+                /num_vsc_pipes = 32,/a\        tile_max_w = 1024,\n        tile_max_h = 1024,
+            }' "$PY_FILE"
+            
+            echo "✅ Python 文件手动修复完成"
           fi
+          
+          # 确保 C 文件也有正确的修改
+          C_FILE="src/freedreno/drm-shim/freedreno_noop.c"
+          echo "检查 C 文件..."
+          if ! grep -q "gpu_id = 710" "$C_FILE"; then
+            echo "添加 FD710/FD720 到 C 文件..."
+            sed -i '/.*\.gpu_id = 666,.*/a\   {\n      .gpu_id = 710,\n      .chip_id = 0x07010000,\n      .gmem_size = 2 * 1024 * 1024,\n   },\n   {\n      .gpu_id = 720,\n      .chip_id = 0x43020000,\n      .gmem_size = 2 * 1024 * 1024,\n   },' "$C_FILE"
+            echo "✅ C 文件修复完成"
+          fi
+          
+          echo "✅ 补丁应用完成"
 
       - name: 自定义品牌
         run: |
