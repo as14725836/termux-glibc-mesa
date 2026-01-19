@@ -1,4 +1,5 @@
 name: 测试版 Mesa (aarch64, Auto Update + Detailed Log)
+
 on:
   workflow_dispatch:
   push:
@@ -7,9 +8,11 @@ on:
       - 'refs/tags/**'
   schedule:
     - cron: "0 22 * * *"
+
 permissions:
   contents: write
   actions: write
+
 jobs:
   check-updates:
     runs-on: ubuntu-24.04-arm
@@ -17,174 +20,299 @@ jobs:
       new_commit: ${{ steps.check.outputs.new_commit }}
       latest_hash: ${{ steps.check.outputs.latest_hash }}
     steps:
-      - name: 检查 Mesa 上游更新
-        id: check
-        run: |
-          echo "🔍 检查 Mesa 上游提交..."
-          LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
-          echo "最新上游提交: $LATEST_HASH"
-          
-          STATE_FILE=".mesa_latest_commit"
-          if [ -f "$STATE_FILE" ]; then
-            LAST_HASH=$(cat $STATE_FILE)
-          else
-            LAST_HASH=""
-          fi
-          echo "上次构建: $LAST_HASH"
-          
-          if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
-            echo "new_commit=true" >> $GITHUB_OUTPUT
-            echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
-          else
-            echo "new_commit=false" >> $GITHUB_OUTPUT
-          fi
+    - name: 检查 Mesa 上游更新
+      id: check
+      run: |
+        echo "🔍 检查 Mesa 上游提交..."
+        LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
+        echo "最新上游提交: $LATEST_HASH"
+        STATE_FILE=".mesa_latest_commit"
+        if [ -f "$STATE_FILE" ]; then
+          LAST_HASH=$(cat $STATE_FILE)
+        else
+          LAST_HASH=""
+        fi
+        echo "上次构建: $LAST_HASH"
+        if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
+          echo "new_commit=true" >> $GITHUB_OUTPUT
+          echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
+        else
+          echo "new_commit=false" >> $GITHUB_OUTPUT
+        fi
+
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: 检出仓库
-        uses: actions/checkout@v4
-      
-      - name: 显示构建环境信息
-        run: |
-          lsb_release -a || true
-          uname -a
-          lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
-          free -h
-          df -h
-      
-      - name: 安装依赖
-        run: |
-          sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
-          sudo apt update
-          sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
-            libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
-            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
-            libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
-          pip3 install --user meson ninja mako
-      
-      - name: 克隆 Mesa 正式版
-        run: |
-          echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/whitebelyash/mesa-tu8.git mesa
-          cd mesa
-          git checkout gen8-hacks
-          echo "🧾 当前分支和提交:"
-          git branch -v
-          git log -1 --oneline --decorate
-      
-      - name: 自定义品牌
-        run: |
-          echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          cd mesa
-          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-      
-      - name: 构建 Mesa
-        run: |
-          cd mesa
-          BUILD_START=$(date +%s)
-          sudo mkdir -p /data/data/com.termux/files/usr/glibc
-          sudo chmod 777 -R /data
+    - name: 检出仓库
+      uses: actions/checkout@v4
+    
+    - name: 显示构建环境信息
+      run: |
+        lsb_release -a || true
+        uname -a
+        lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
+        free -h
+        df -h
+    
+    - name: 安装依赖
+      run: |
+        sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
+        sudo apt update
+        sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
+          libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
+          libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
+          libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
+        pip3 install --user meson ninja mako
+    
+    - name: 克隆 Mesa 正式版
+      run: |
+        echo "📥 克隆 Mesa 仓库..."
+        git clone https://github.com/whitebelyash/mesa-tu8.git mesa
+        cd mesa
+        git checkout gen8-hacks
+        echo "🧾 当前分支和提交:"
+        git branch -v
+        git log -1 --oneline --decorate
+    
+    - name: 应用 Adreno 710/720 支持补丁
+      run: |
+        echo "🔧 应用 Adreno 710/720 支持补丁..."
+        cd mesa
+        
+        # 创建补丁文件
+        cat > 0016-unofficial_support_adreno_710_720.patch << 'EOF'
+        --- a/src/freedreno/common/freedreno_devices.py
+        +++ b/src/freedreno/common/freedreno_devices.py
+        @@ -1065,6 +1065,42 @@ add_gpus([
+                 raw_magic_regs = a730_raw_magic_regs,
+             ))
+         
+        +add_gpus([
+        +        GPUId(chip_id=0x07010000, name="FD710"), # KGSL, no speedbin data
+        +        GPUId(chip_id=0xffff07010000, name="FD710"), # Default no-speedbin fallback
+        +    ], A6xxGPUInfo(
+        +        CHIP.A7XX,
+        +        [a7xx_base, a7xx_gen1],
+        +        num_ccu = 4,
+        +        tile_align_w = 64,
+        +        tile_align_h = 32,
+        +        num_vsc_pipes = 32,
+        +        cs_shared_mem_size = 32 * 1024,
+        +        wave_granularity = 2,
+        +        fibers_per_sp = 128 * 2 * 16,
+        +        highest_bank_bit = 16,
+        +        magic_regs = a730_magic_regs,
+        +        raw_magic_regs = a730_raw_magic_regs,
+        +    ))
+        
+        +add_gpus([
+        +        GPUId(chip_id=0x43020000, name="FD720"), # KGSL, no speedbin data
+        +        GPUId(chip_id=0xffff043020000, name="FD720"), # Default no-speedbin fallback
+        +    ], A6xxGPUInfo(
+        +        CHIP.A7XX,
+        +        [a7xx_base, a7xx_gen1],
+        +        num_ccu = 4,
+        +        tile_align_w = 64,
+        +        tile_align_h = 32,
+        +        num_vsc_pipes = 32,
+        +        cs_shared_mem_size = 32 * 1024,
+        +        wave_granularity = 2,
+        +        fibers_per_sp = 128 * 2 * 16,
+        +        highest_bank_bit = 16,
+        +        magic_regs = a730_magic_regs,
+        +        raw_magic_regs = a730_raw_magic_regs,
+        +    ))
+        
+        +add_gpus([
+                 GPUId(chip_id=0x07030001, name="FD730"), # KGSL, no speedbin data
+                 GPUId(chip_id=0xffff07030001, name="FD730"), # Default no-speedbin fallback
+        --- a/src/freedreno/drm-shim/freedreno_noop.c
+        +++ b/src/freedreno/drm-shim/freedreno_noop.c
+        @@ -258,6 +258,16 @@ static const struct msm_device_info device_infos[] = {
+               .chip_id = CHIPID(6, 6, 0, 0xff),
+               .gmem_size = 1024 * 1024 + 512 * 1024,
+            },
+        +   {
+        +      .gpu_id = 710,
+        +      .chip_id = 0x07010000,
+        +      .gmem_size = 2 * 1024 * 1024,
+        +   },
+        +   {
+        +      .gpu_id = 720,
+        +      .chip_id = 0x43020000,
+        +      .gmem_size = 2 * 1024 * 1024,
+        +   },
+            {
+               .gpu_id = 702,
+               .chip_id = 0x00b207002000,
+        EOF
+        
+        # 尝试应用补丁，如果失败则手动应用
+        if git apply -v 0016-unofficial_support_adreno_710_720.patch 2>&1 | tee patch.log; then
+          echo "✅ 补丁应用成功"
+        else
+          echo "⚠️  补丁应用失败，尝试手动应用..."
           
-          mkdir -p builddir
-          meson setup builddir \
-            --libdir=lib \
-            -Dprefix=/data/data/com.termux/files/usr/glibc \
-            -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
-            -Dplatforms=x11 \
-            -Degl-native-platform=x11 \
-            -Dglx=dri \
-            -Dglx-direct=true \
-            -Dopengl=true \
-            -Dgles1=enabled \
-            -Dgles2=enabled \
-            -Dglvnd=disabled \
-            -Degl=enabled \
-            -Dllvm=enabled \
-            -Dshared-llvm=enabled \
-            -Dshader-cache=enabled \
-            -Dshared-glapi=enabled \
-            -Dxlib-lease=enabled \
-            -Dvulkan-beta=true \
-            -Dlibunwind=disabled \
-            -Dvalgrind=disabled \
-            -Dmicrosoft-clc=disabled \
-            -Dgallium-rusticl=false \
-            -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
-            -Dgallium-rusticl-enable-drivers=freedreno \
-            -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast \
-            -Dfreedreno-kmds=kgsl \
-            -Dvideo-codecs=all \
-            -Dgbm=enabled \
-            -Db_ndebug=true \
-            -Db_lto=true \
-            -Dstrip=true
+          # 手动应用 freedreno_devices.py 部分
+          sed -i '/raw_magic_regs = a730_raw_magic_regs,/a\
+        add_gpus([\
+                GPUId(chip_id=0x07010000, name="FD710"), # KGSL, no speedbin data\
+                GPUId(chip_id=0xffff07010000, name="FD710"), # Default no-speedbin fallback\
+            ], A6xxGPUInfo(\
+                CHIP.A7XX,\
+                [a7xx_base, a7xx_gen1],\
+                num_ccu = 4,\
+                tile_align_w = 64,\
+                tile_align_h = 32,\
+                num_vsc_pipes = 32,\
+                cs_shared_mem_size = 32 * 1024,\
+                wave_granularity = 2,\
+                fibers_per_sp = 128 * 2 * 16,\
+                highest_bank_bit = 16,\
+                magic_regs = a730_magic_regs,\
+                raw_magic_regs = a730_raw_magic_regs,\
+            ))\
+        \
+        add_gpus([\
+                GPUId(chip_id=0x43020000, name="FD720"), # KGSL, no speedbin data\
+                GPUId(chip_id=0xffff043020000, name="FD720"), # Default no-speedbin fallback\
+            ], A6xxGPUInfo(\
+                CHIP.A7XX,\
+                [a7xx_base, a7xx_gen1],\
+                num_ccu = 4,\
+                tile_align_w = 64,\
+                tile_align_h = 32,\
+                num_vsc_pipes = 32,\
+                cs_shared_mem_size = 32 * 1024,\
+                wave_granularity = 2,\
+                fibers_per_sp = 128 * 2 * 16,\
+                highest_bank_bit = 16,\
+                magic_regs = a730_magic_regs,\
+                raw_magic_regs = a730_raw_magic_regs,\
+            ))' src/freedreno/common/freedreno_devices.py
           
-          ninja -C builddir -j$(nproc)
-          ninja -C builddir install
+          # 手动应用 freedreno_noop.c 部分
+          sed -i '/\.gpu_id = 660,/,/^   \},/ {
+            /^   \},/a\
+        \   {\
+        \      .gpu_id = 710,\
+        \      .chip_id = 0x07010000,\
+        \      .gmem_size = 2 * 1024 * 1024,\
+        \   },\
+        \   {\
+        \      .gpu_id = 720,\
+        \      .chip_id = 0x43020000,\
+        \      .gmem_size = 2 * 1024 * 1024,\
+        \   },
+          }' src/freedreno/drm-shim/freedreno_noop.c
           
-          BUILD_END=$(date +%s)
-          echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
-          
-          VERSION=$(cat VERSION)
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
-      
-      - name: 打包构建产物
-        run: |
-          echo "📦 开始打包 Mesa 产物..."
-          cd mesa
-          PACK_START=$(date +%s)
-          
-          TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
-          
-          FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
-          
-          cd ..
-          sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
-          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
-          
-          PACK_END=$(date +%s)
-          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
-          
-          echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
-          echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
-      
-      - name: 上传构建产物到 Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mesa-artifacts-${{ env.VERSION }}-aarch64
-          path: |
-            ${{ env.TAR_NAME }}
-            ${{ env.FULL_TAR }}
-            ${{ env.TAR_NAME }}.sha256
-            ${{ env.FULL_TAR }}.sha256
-      
-      - name: 保存最新提交记录
-        if: ${{ needs.check-updates.outputs.latest_hash != '' }}
-        run: |
-          echo "${{ needs.check-updates.outputs.latest_hash }}" > .mesa_latest_commit
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add .mesa_latest_commit || true
-          git commit -m "Update Mesa commit record" || true
-          git push || true
-      
-      - name: 输出总结信息
-        run: |
-          echo "构建完成"
-          echo "版本: ${{ env.VERSION }}"
-          echo "提交: ${{ env.GIT_HASH }}"
-          echo "构建产物已保存到 Artifacts"
-          echo "- ${{ env.TAR_NAME }}"
-          echo "- ${{ env.FULL_TAR }}"
+          echo "✅ 手动补丁应用完成"
+        fi
+    
+    - name: 自定义品牌
+      run: |
+        echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
+        cd mesa
+        sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+        sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
+        sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+    
+    - name: 构建 Mesa
+      run: |
+        cd mesa
+        BUILD_START=$(date +%s)
+        sudo mkdir -p /data/data/com.termux/files/usr/glibc
+        sudo chmod 777 -R /data
+        mkdir -p builddir
+        meson setup builddir \
+          --libdir=lib \
+          -Dprefix=/data/data/com.termux/files/usr/glibc \
+          -Dbuildtype=release \
+          -Doptimization=3 \
+          -Db_lto=true \
+          -Dplatforms=x11 \
+          -Degl-native-platform=x11 \
+          -Dglx=dri \
+          -Dglx-direct=true \
+          -Dopengl=true \
+          -Dgles1=enabled \
+          -Dgles2=enabled \
+          -Dglvnd=disabled \
+          -Degl=enabled \
+          -Dllvm=enabled \
+          -Dshared-llvm=enabled \
+          -Dshader-cache=enabled \
+          -Dshared-glapi=enabled \
+          -Dxlib-lease=enabled \
+          -Dvulkan-beta=true \
+          -Dlibunwind=disabled \
+          -Dvalgrind=disabled \
+          -Dmicrosoft-clc=disabled \
+          -Dgallium-rusticl=false \
+          -Dgallium-extra-hud=true \
+          -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
+          -Dgallium-rusticl-enable-drivers=freedreno \
+          -Dshader-cache-default=true \
+          -Dvulkan-drivers=freedreno,swrast \
+          -Dfreedreno-kmds=kgsl \
+          -Dvideo-codecs=all \
+          -Dgbm=enabled \
+          -Db_ndebug=true \
+          -Db_lto=true \
+          -Dstrip=true
+        ninja -C builddir -j$(nproc)
+        ninja -C builddir install
+        BUILD_END=$(date +%s)
+        echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
+        VERSION=$(cat VERSION)
+        GIT_HASH=$(git rev-parse --short HEAD)
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+    
+    - name: 打包构建产物
+      run: |
+        echo "📦 开始打包 Mesa 产物..."
+        cd mesa
+        PACK_START=$(date +%s)
+        TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
+        tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+        FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
+        tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
+        cd ..
+        sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
+        sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
+        PACK_END=$(date +%s)
+        echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+        echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
+        echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
+    
+    - name: 上传构建产物到 Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: mesa-artifacts-${{ env.VERSION }}-aarch64
+        path: |
+          ${{ env.TAR_NAME }}
+          ${{ env.FULL_TAR }}
+          ${{ env.TAR_NAME }}.sha256
+          ${{ env.FULL_TAR }}.sha256
+    
+    - name: 保存最新提交记录
+      if: ${{ needs.check-updates.outputs.latest_hash != '' }}
+      run: |
+        echo "${{ needs.check-updates.outputs.latest_hash }}" > .mesa_latest_commit
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add .mesa_latest_commit || true
+        git commit -m "Update Mesa commit record" || true
+        git push || true
+    
+    - name: 输出总结信息
+      run: |
+        echo "构建完成"
+        echo "版本: ${{ env.VERSION }}"
+        echo "提交: ${{ env.GIT_HASH }}"
+        echo "构建产物已保存到 Artifacts"
+        echo "- ${{ env.TAR_NAME }}"
+        echo "- ${{ env.FULL_TAR }}"
