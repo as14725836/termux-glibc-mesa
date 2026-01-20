@@ -71,11 +71,14 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
+          git clone https://gitlab.freedesktop.org/mesa/mesa.git
           cd mesa
-          git checkout test/turnip-gen8
-          echo "🧾 当前分支和提交:"
-          git branch -v
+          echo "🔍 获取最新稳定标签..."
+          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+          echo "最新标签: $LATEST_TAG"
+          git checkout $LATEST_TAG
+          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          echo "🧾 最新提交:"
           git log -1 --oneline --decorate
             
       - name: 应用 FD710/FD720 补丁
