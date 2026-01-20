@@ -3,7 +3,7 @@
 @@ -1065,6 +1065,46 @@ add_gpus([
          raw_magic_regs = a730_raw_magic_regs,
      ))
-
+ 
 +add_gpus([
 +        GPUId(chip_id=0x07010000, name="FD710"), # KGSL, no speedbin data
 +        GPUId(chip_id=0xffff07010000, name="FD710"), # Default no-speedbin fallback
@@ -62,3 +62,4 @@
     {
        .gpu_id = 702,
        .chip_id = 0x00b207002000,
+       
