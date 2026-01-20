@@ -97,6 +97,9 @@ jobs:
           echo "🔧 应用 FD710 / FD720 补丁"
           cd mesa
           git apply --verbose ../full_fixed_710_720.patch
+          git apply --verbose ../0003-fix-for-anon-file.patch
+          git apply --verbose ../0017-preserve-egl-support-in-zink.patch
+          git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
           echo "✅ 补丁应用完成"
 
       - name: 自定义品牌
