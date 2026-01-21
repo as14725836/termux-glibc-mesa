@@ -100,6 +100,7 @@ jobs:
           git apply --verbose ../0003-fix-for-anon-file.patch
           git apply --verbose ../0017-preserve-egl-support-in-zink.patch
           git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
+          git apply --verbose ../0014-freedreno-kgsl-experimental-full.patch
           echo "✅ 补丁应用完成"
 
       - name: 自定义品牌
