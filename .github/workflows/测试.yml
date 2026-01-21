@@ -1,5 +1,4 @@
 name: 测试版 Mesa (aarch64, Auto Update + Detailed Log)
-
 on:
   workflow_dispatch:
   push:
@@ -8,11 +7,9 @@ on:
       - 'refs/tags/**'
   schedule:
     - cron: "0 22 * * *"
-
 permissions:
   contents: write
   actions: write
-
 jobs:
   check-updates:
     runs-on: ubuntu-24.04-arm
@@ -26,7 +23,7 @@ jobs:
           echo "🔍 检查 Mesa 上游提交..."
           LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
           echo "最新上游提交: $LATEST_HASH"
-
+          
           STATE_FILE=".mesa_latest_commit"
           if [ -f "$STATE_FILE" ]; then
             LAST_HASH=$(cat $STATE_FILE)
@@ -34,23 +31,21 @@ jobs:
             LAST_HASH=""
           fi
           echo "上次构建: $LAST_HASH"
-
+          
           if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
             echo "new_commit=true" >> $GITHUB_OUTPUT
             echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
           else
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
-
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
     runs-on: ubuntu-24.04-arm
-
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
-
+      
       - name: 显示构建环境信息
         run: |
           lsb_release -a || true
@@ -58,40 +53,27 @@ jobs:
           lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
           free -h
           df -h
-
+      
       - name: 安装依赖
         run: |
           sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
           sudo apt update
-          sudo apt install -y \
-            glslang-tools \
-            libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
-            libxext-dev llvm-19 \
-            libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev \
-            libxcb-present-dev libxcb-randr0-dev libxcb-sync-dev \
-            libxcb-xfixes0-dev libxshmfence-dev \
-            libdrm-dev libgbm-dev libegl1-mesa-dev \
-            libexpat1-dev \
-            libwayland-egl-backend-dev wayland-protocols libwayland-dev \
-            python3-pip
-
+          sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
+            libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
+            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
+            libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
-
+      
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/mesa/mesa.git
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-
-          echo "🔍 获取最新稳定标签..."
-          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
-          echo "最新标签: $LATEST_TAG"
-          git checkout "$LATEST_TAG"
-
-          echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
+          git checkout adreno-main
+          echo "🧾 当前分支和提交:"
+          git branch -v
           git log -1 --oneline --decorate
 
-      # ✅【这里是你关心的重点修改】
       - name: 应用 FD710 / FD720 补丁（来自仓库）
         run: |
           echo "🔧 应用 FD710 / FD720 补丁"
@@ -100,9 +82,8 @@ jobs:
           git apply --verbose ../0003-fix-for-anon-file.patch
           git apply --verbose ../0017-preserve-egl-support-in-zink.patch
           git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
-          git apply --verbose ../0014-freedreno-kgsl-experimental-full.patch
           echo "✅ 补丁应用完成"
-
+      
       - name: 自定义品牌
         run: |
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
@@ -110,65 +91,85 @@ jobs:
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-
+      
       - name: 构建 Mesa
         run: |
           cd mesa
           BUILD_START=$(date +%s)
-
           sudo mkdir -p /data/data/com.termux/files/usr/glibc
           sudo chmod 777 -R /data
-
+          
           mkdir -p builddir
           meson setup builddir \
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Dplatforms=x11,wayland \
+            -Doptimization=3 \
+            -Db_lto=true \
+            -Dplatforms=x11 \
+            -Degl-native-platform=x11 \
             -Dglx=dri \
-            -Dgles1=disabled \
+            -Dglx-direct=true \
+            -Dopengl=true \
+            -Dgles1=enabled \
             -Dgles2=enabled \
-            -Dglvnd=enabled \
+            -Dglvnd=disabled \
             -Degl=enabled \
+            -Dllvm=enabled \
+            -Dshared-llvm=enabled \
+            -Dshader-cache=enabled \
+            -Dshared-glapi=enabled \
+            -Dxlib-lease=enabled \
+            -Dvulkan-beta=true \
             -Dlibunwind=disabled \
             -Dvalgrind=disabled \
             -Dmicrosoft-clc=disabled \
-            -Dgallium-drivers=freedreno,zink,virgl,llvmpipe \
-            -Dvulkan-drivers=freedreno \
+            -Dgallium-rusticl=false \
+            -Dgallium-extra-hud=true \
+            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
+            -Dgallium-rusticl-enable-drivers=freedreno \
+            -Dshader-cache-default=true \
+            -Dvulkan-drivers=freedreno,swrast \
             -Dfreedreno-kmds=kgsl \
-            -Dintel-rt=disabled \
-            -Dgallium-mediafoundation=disabled \
-            -Dgallium-va=disabled \
-            -Dvulkan-layers=
-
+            -Dvideo-codecs=all \
+            -Dgbm=enabled \
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
+          
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
-
+          
           BUILD_END=$(date +%s)
           echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
-
+          
           VERSION=$(cat VERSION)
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
-
+      
       - name: 打包构建产物
         run: |
+          echo "📦 开始打包 Mesa 产物..."
           cd mesa
-
+          PACK_START=$(date +%s)
+          
           TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
-
+          
           FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
-
+          
           cd ..
           sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
           sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
-
+          
+          PACK_END=$(date +%s)
+          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+          
           echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
           echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
-
+      
       - name: 上传构建产物到 Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -178,7 +179,7 @@ jobs:
             ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
-
+      
       - name: 保存最新提交记录
         if: ${{ needs.check-updates.outputs.latest_hash != '' }}
         run: |
@@ -188,10 +189,12 @@ jobs:
           git add .mesa_latest_commit || true
           git commit -m "Update Mesa commit record" || true
           git push || true
-
+      
       - name: 输出总结信息
         run: |
           echo "构建完成"
           echo "版本: ${{ env.VERSION }}"
           echo "提交: ${{ env.GIT_HASH }}"
           echo "构建产物已保存到 Artifacts"
+          echo "- ${{ env.TAR_NAME }}"
+          echo "- ${{ env.FULL_TAR }}"
