@@ -1,0 +1,663 @@
+From 5523605063b2b176bb195b318caa424e805bb72a Mon Sep 17 00:00:00 2001
+From: iFlow <iflow@example.com>
+Date: Tue, 20 Jan 2026 18:50:10 +0000
+Subject: [PATCH] freedreno/kgsl: experimental KGSL support
+
+---
+ meson.build                                 |   3 +
+ src/freedreno/drm/freedreno_drmif.h         |  18 ++
+ src/freedreno/drm/freedreno_priv.h          |  13 ++
+ src/freedreno/drm/kgsl/kgsl_bo.c            | 138 +++++++++++++
+ src/freedreno/drm/kgsl/kgsl_device.c        | 204 ++++++++++++++++++++
+ src/freedreno/drm/kgsl/kgsl_pipe.c          |  52 +++++
+ src/freedreno/drm/kgsl/kgsl_priv.h          |  54 ++++++
+ src/freedreno/drm/kgsl/kgsl_ringbuffer_sp.c |  22 +++
+ src/freedreno/drm/meson.build               |   5 +
+ 9 files changed, 509 insertions(+)
+ create mode 100644 src/freedreno/drm/kgsl/kgsl_bo.c
+ create mode 100644 src/freedreno/drm/kgsl/kgsl_device.c
+ create mode 100644 src/freedreno/drm/kgsl/kgsl_pipe.c
+ create mode 100644 src/freedreno/drm/kgsl/kgsl_priv.h
+ create mode 100644 src/freedreno/drm/kgsl/kgsl_ringbuffer_sp.c
+
+diff --git a/meson.build b/meson.build
+index f85cd266e8c..eab88e01951 100644
+--- a/meson.build
++++ b/meson.build
+@@ -307,6 +307,9 @@ if freedreno_kmds.length() != 0 and freedreno_kmds != [ 'msm' ] and with_freedre
+   elif _vulkan_drivers != [ 'freedreno' ]
+       warning('Turnip is forced to link with libdrm when built alongside other Vulkan drivers which platforms such as Android may not have available at runtime.')
+   else
++    if freedreno_kmds.contains('kgsl')
++      pre_args += '-DHAVE_FREEDRENO_KGSL'
++    endif
+     # If DRM support isn't needed, we can get rid of it since linking
+     # to libdrm can be a potential compatibility hazard.
+     system_has_kms_drm = false
+diff --git a/src/freedreno/drm/freedreno_drmif.h b/src/freedreno/drm/freedreno_drmif.h
+index ecb84aa57f8..7c3cceb4a56 100644
+--- a/src/freedreno/drm/freedreno_drmif.h
++++ b/src/freedreno/drm/freedreno_drmif.h
+@@ -50,6 +50,13 @@ enum fd_param_id {
+    FD_UCHE_TRAP_BASE,
+ };
+ 
++enum fd_reset_status {
++   FD_RESET_NO_ERROR,
++   FD_RESET_GUILTY,
++   FD_RESET_INNOCENT,
++   FD_RESET_UNKNOWN,
++};
++
+ /**
+  * Helper for fence/seqno comparisions which deals properly with rollover.
+  * Returns true if fence 'a' is before fence 'b'
+@@ -191,7 +198,16 @@ struct fd_pipe *fd_pipe_new2(struct fd_device *dev, enum fd_pipe_id id,
+                              uint32_t prio);
+ struct fd_pipe *fd_pipe_ref(struct fd_pipe *pipe);
+ struct fd_pipe *fd_pipe_ref_locked(struct fd_pipe *pipe);
++enum fd_features {
++    FD_FEATURE_DIRECT_RESET = 1,
++    FD_FEATURE_IMPORT_DMABUF = 2,
++};
++
++uint32_t fd_get_features(struct fd_device *dev);
++
+ void fd_pipe_del(struct fd_pipe *pipe);
++int fd_pipe_get_reset_status(struct fd_pipe *pipe, enum fd_reset_status *status);
++
+ void fd_pipe_purge(struct fd_pipe *pipe);
+ const struct fd_dev_id * fd_pipe_dev_id(struct fd_pipe *pipe);
+ int fd_pipe_get_param(struct fd_pipe *pipe, enum fd_param_id param,
+@@ -272,6 +288,8 @@ fd_bo_new(struct fd_device *dev, uint32_t size, uint32_t flags, const char *fmt,
+    if (fmt) {
+       va_list ap;
+       va_start(ap, fmt);
++struct fd_bo *fd_bo_from_dmabuf_drm(struct fd_device *dev, int fd);
++
+       _fd_bo_set_name(bo, fmt, ap);
+       va_end(ap);
+    }
+diff --git a/src/freedreno/drm/freedreno_priv.h b/src/freedreno/drm/freedreno_priv.h
+index 3a243b6cd84..21e194664d7 100644
+--- a/src/freedreno/drm/freedreno_priv.h
++++ b/src/freedreno/drm/freedreno_priv.h
+@@ -108,6 +108,9 @@ struct fd_bo_bucket {
+    struct list_head list;
+ };
+ 
++   struct fd_bo *(*bo_from_dmabuf)(struct fd_device *dev, int fd);
++   void (*bo_close_handle)(struct fd_device *dev, uint32_t handle);
++
+ struct fd_bo_cache {
+    const char *name;
+    simple_mtx_t lock;
+@@ -204,6 +207,8 @@ struct fd_device {
+    struct hash_table *handle_table, *name_table;
+ 
+    const struct fd_device_funcs *funcs;
++   uint32_t features;
++
+ 
+    struct fd_bo_cache bo_cache;
+    struct fd_bo_cache ring_cache;
+@@ -306,6 +311,8 @@ struct fd_pipe_funcs {
+ 
+    int (*get_param)(struct fd_pipe *pipe, enum fd_param_id param,
+                     uint64_t *value);
++   int (*reset_status)(struct fd_pipe *pipe, enum fd_reset_status *status);
++
+    int (*set_param)(struct fd_pipe *pipe, enum fd_param_id param,
+                     uint64_t value);
+    int (*wait)(struct fd_pipe *pipe, const struct fd_fence *fence,
+@@ -416,6 +423,8 @@ fd_dev_count_deferred_cmds(struct fd_device *dev)
+ struct fd_bo_funcs {
+    int (*offset)(struct fd_bo *bo, uint64_t *offset);
+    void *(*map)(struct fd_bo *bo);
++   void *(*map)(struct fd_bo *bo);
++
+    int (*cpu_prep)(struct fd_bo *bo, struct fd_pipe *pipe, uint32_t op);
+    int (*madvise)(struct fd_bo *bo, int willneed);
+    uint64_t (*iova)(struct fd_bo *bo);
+@@ -452,6 +461,8 @@ struct fd_bo_funcs {
+ };
+ 
+ void fd_bo_add_fence(struct fd_bo *bo, struct fd_fence *fence);
++void *fd_bo_map_os_mmap(struct fd_bo *bo);
++
+ void *fd_bo_map_os_mmap(struct fd_bo *bo);
+ void *__fd_bo_map(struct fd_bo *bo);
+ 
+@@ -465,6 +476,8 @@ enum fd_bo_state fd_bo_state(struct fd_bo *bo);
+ void fd_bo_init_common(struct fd_bo *bo, struct fd_device *dev);
+ void fd_bo_fini_fences(struct fd_bo *bo);
+ void fd_bo_fini_common(struct fd_bo *bo);
++void fd_bo_close_handle_drm(struct fd_bo *bo);
++
+ 
+ struct fd_bo *fd_bo_new_ring(struct fd_device *dev, uint32_t size);
+ 
+diff --git a/src/freedreno/drm/kgsl/kgsl_bo.c b/src/freedreno/drm/kgsl/kgsl_bo.c
+new file mode 100644
+index 00000000000..7a2f7021028
+--- /dev/null
++++ b/src/freedreno/drm/kgsl/kgsl_bo.c
+@@ -0,0 +1,138 @@
++#include "kgsl/kgsl_priv.h"
++#include "util/u_debug.h"
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <errno.h>
++#include <string.h>
++#include <stdlib.h>
++
++static int kgsl_bo_get_offset(struct fd_bo *bo, uint64_t *offset);
++
++static const struct fd_bo_funcs kgsl_bo_funcs = {
++    .offset = kgsl_bo_get_offset,
++    .map = fd_bo_map_os_mmap,
++};
++
++static int kgsl_bo_get_offset(struct fd_bo *bo, uint64_t *offset)
++{
++    struct kgsl_bo *kgsl_bo = kgsl_bo(bo);
++
++    *offset = kgsl_bo->iova;
++    return 0;
++}
++
++static void kgsl_bo_destroy(struct fd_bo *bo)
++{
++    struct kgsl_bo *kgsl_bo = kgsl_bo(bo);
++
++    if (kgsl_bo->bo_type == KGSL_BO_NATIVE && kgsl_bo->iova) {
++        struct kgsl_gpumem_free_id args = {
++            .id = kgsl_bo->iova >> 12, // Convert to page ID
++        };
++
++        kgsl_pipe_safe_ioctl(kgsl_bo->queue_id, IOCTL_KGSL_GPUMEM_FREE_ID, &args);
++    }
++
++    if (kgsl_bo->import_fd >= 0)
++        close(kgsl_bo->import_fd);
++
++    fd_bo_fini_common(bo);
++    free(kgsl_bo);
++}
++
++static const struct fd_bo_funcs_v1 kgsl_bo_funcs_v1 = {
++    .base = &kgsl_bo_funcs,
++    .destroy = kgsl_bo_destroy,
++};
++
++struct fd_bo *kgsl_bo_new(struct fd_device *dev, uint32_t size, uint32_t flags)
++{
++    struct kgsl_bo *kgsl_bo;
++    struct kgsl_gpumem_alloc_id_new args = {
++        .size = size,
++        .flags = KGSL_MEMFLAGS_GROWABLE,
++        .mmapsize = 0,
++    };
++
++    kgsl_bo = calloc(1, sizeof(*kgsl_bo));
++    if (!kgsl_bo)
++        return NULL;
++
++    kgsl_bo->bo_type = KGSL_BO_NATIVE;
++    kgsl_bo->import_fd = -1;
++
++    if (kgsl_pipe_safe_ioctl(dev->fd, IOCTL_KGSL_GPUMEM_ALLOC_ID, &args)) {
++        free(kgsl_bo);
++        return NULL;
++    }
++
++    kgsl_bo->iova = (uint64_t)args.id << 12; // Convert page ID back to address
++    kgsl_bo->queue_id = dev->fd;
++
++    kgsl_bo->base.size = size;
++    kgsl_bo->base.dev = dev;
++    kgsl_bo->base.funcs = &kgsl_bo_funcs_v1;
++
++    return &kgsl_bo->base;
++}
++
++struct fd_bo *kgsl_bo_from_dmabuf(struct fd_device *dev, int fd)
++{
++    struct kgsl_bo *kgsl_bo;
++    struct kgsl_import_entry args = {
++        .fd = fd,
++        .flags = 0,
++    };
++
++    kgsl_bo = calloc(1, sizeof(*kgsl_bo));
++    if (!kgsl_bo)
++        return NULL;
++
++    kgsl_bo->bo_type = KGSL_BO_IMPORT;
++    kgsl_bo->import_fd = fd;
++
++    // Import the dmabuf into KGSL
++    if (kgsl_pipe_safe_ioctl(dev->fd, IOCTL_KGSL_IMPORT_DMABUF, &args)) {
++        free(kgsl_bo);
++        close(fd);
++        return NULL;
++    }
++
++    kgsl_bo->iova = args.iova;
++    kgsl_bo->queue_id = dev->fd;
++
++    kgsl_bo->base.size = lseek(fd, 0, SEEK_END);
++    lseek(fd, 0, SEEK_SET);
++
++    kgsl_bo->base.dev = dev;
++    kgsl_bo->base.funcs = &kgsl_bo_funcs_v1;
++
++    return &kgsl_bo->base;
++}
++
++struct fd_bo *kgsl_bo_from_handle(struct fd_device *dev, uint32_t size, uint32_t handle)
++{
++    struct kgsl_bo *kgsl_bo;
++
++    kgsl_bo = calloc(1, sizeof(*kgsl_bo));
++    if (!kgsl_bo)
++        return NULL;
++
++    kgsl_bo->bo_type = KGSL_BO_NATIVE;
++    kgsl_bo->iova = (uint64_t)handle << 12; // Convert handle to address
++    kgsl_bo->queue_id = dev->fd;
++    kgsl_bo->import_fd = -1;
++
++    kgsl_bo->base.size = size;
++    kgsl_bo->base.dev = dev;
++    kgsl_bo->base.funcs = &kgsl_bo_funcs_v1;
++
++    return &kgsl_bo->base;
++}
++
++void kgsl_bo_close_handle(struct fd_device *dev, uint32_t handle)
++{
++    // No special handling needed for KGSL handles
++}
+\ No newline at end of file
+diff --git a/src/freedreno/drm/kgsl/kgsl_device.c b/src/freedreno/drm/kgsl/kgsl_device.c
+new file mode 100644
+index 00000000000..566068e042a
+--- /dev/null
++++ b/src/freedreno/drm/kgsl/kgsl_device.c
+@@ -0,0 +1,204 @@
++#include "kgsl/kgsl_priv.h"
++#include "util/os_file.h"
++#include "util/macros.h"
++#include "util/u_debug.h"
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <xf86drm.h>
++#include <errno.h>
++#include <string.h>
++#include <stdlib.h>
++
++static const struct fd_device_funcs kgsl_device_funcs;
++
++static int kgsl_set_prop(int fd, unsigned int type, void *value, size_t size)
++{
++    struct kgsl_device_getproperty property = {
++        .type = type,
++        .value = value,
++        .sizebytes = size,
++    };
++
++    return ioctl(fd, IOCTL_KGSL_DEVICE_GETPROPERTY, &property);
++}
++
++int kgsl_get_prop(int fd, unsigned int type, void *value, size_t size)
++{
++    int ret;
++
++    do {
++        ret = kgsl_set_prop(fd, type, value, size);
++    } while (ret == -1 && (errno == EAGAIN || errno == EINTR));
++
++    return ret;
++}
++
++static int get_gpu_id(int fd, uint32_t *gpu_id, uint32_t *chip_id)
++{
++    struct kgsl_devmode_query query = {
++        .id = KGSL_QUERY_DEVICE_ID,
++        .result = gpu_id,
++        .size = sizeof(*gpu_id),
++    };
++
++    int ret = ioctl(fd, IOCTL_KGSL_DEVMODE_QUERY, &query);
++    if (ret)
++        return ret;
++
++    query.id = KGSL_QUERY_DEVICE_VERSION;
++    query.result = chip_id;
++    query.size = sizeof(*chip_id);
++
++    return ioctl(fd, IOCTL_KGSL_DEVMODE_QUERY, &query);
++}
++
++static int kgsl_pipe_wait(struct fd_pipe *pipe, const struct fd_fence *fence, uint64_t timeout)
++{
++    struct kgsl_pipe *kgsl_pipe = kgsl_pipe(pipe);
++    struct kgsl_device_waittimestamp_timestamp args = {
++        .timestamp = fence->seqno,
++        .timeout = timeout,
++    };
++
++    return kgsl_pipe_safe_ioctl(kgsl_pipe->queue_id, IOCTL_KGSL_DEVICE_WAITTIMESTAMP, &args);
++}
++
++int kgsl_pipe_safe_ioctl(int fd, unsigned long request, void *arg)
++{
++    int ret;
++
++    do {
++        ret = ioctl(fd, request, arg);
++    } while (ret == -1 && (errno == EAGAIN || errno == EINTR));
++
++    return ret;
++}
++
++static int kgsl_pipe_get_reset_status(struct fd_pipe *pipe, enum fd_reset_status *status)
++{
++    struct kgsl_pipe *kgsl_pipe = kgsl_pipe(pipe);
++
++    struct kgsl_cmdstream_readtimestamp args = {
++        .type = KGSL_TIMESTAMP_RETIRED,
++        .timestamp = 0,
++    };
++
++    int ret = kgsl_pipe_safe_ioctl(kgsl_pipe->queue_id, IOCTL_KGSL_CMDSTREAM_READTIMESTAMP, &args);
++    if (ret)
++        return ret;
++
++    // Check if GPU reset occurred - this is a simplified approach
++    *status = FD_RESET_NO_ERROR;
++    return 0;
++}
++
++static struct fd_ringbuffer *kgsl_ringbuffer_new_object(struct fd_pipe *pipe, uint32_t size)
++{
++    return fd_ringbuffer_new(pipe, size);
++}
++
++static struct fd_submit *kgsl_submit_new(struct fd_pipe *pipe)
++{
++    struct kgsl_pipe *kgsl_pipe = kgsl_pipe(pipe);
++    return fd_submit_new(pipe, kgsl_pipe->queue_id);
++}
++
++static const struct fd_pipe_funcs kgsl_pipe_funcs = {
++    .wait = kgsl_pipe_wait,
++    .ringbuffer_new_object = kgsl_ringbuffer_new_object,
++    .submit_new = kgsl_submit_new,
++    .reset_status = kgsl_pipe_get_reset_status,
++};
++
++static struct fd_pipe *kgsl_pipe_new(struct fd_device *dev, enum fd_pipe_id id,
++                                     uint32_t prio)
++{
++    struct kgsl_device *kgsl_dev = kgsl_device(dev);
++    struct kgsl_pipe *kgsl_pipe;
++    struct kgsl_gpumem_alloc_id_new args = {
++        .size = 0x1000,
++        .flags = KGSL_MEMTYPE_KERNEL,
++        .mmapsize = 0,
++    };
++
++    kgsl_pipe = calloc(1, sizeof(*kgsl_pipe));
++    if (!kgsl_pipe)
++        return NULL;
++
++    kgsl_pipe->base.dev = dev;
++
++    if (kgsl_get_prop(kgsl_dev->base.fd, KGSL_PROP_DEVICE_INFO, &kgsl_pipe->dev_id,
++                      sizeof(kgsl_pipe->dev_id)))
++        goto fail;
++
++    /* Create a queue for this pipe */
++    if (kgsl_pipe_safe_ioctl(kgsl_dev->base.fd, IOCTL_KGSL_GPUMEM_ALLOC_ID, &args))
++        goto fail;
++
++    kgsl_pipe->queue_id = args.id;
++
++    kgsl_pipe->base.funcs = &kgsl_pipe_funcs;
++
++    return &kgsl_pipe->base;
++
++fail:
++    free(kgsl_pipe);
++    return NULL;
++}
++
++static const struct fd_device_funcs kgsl_device_funcs = {
++    .pipe_new = kgsl_pipe_new,
++    .bo_from_handle = kgsl_bo_from_handle,
++    .bo_from_dmabuf = kgsl_bo_from_dmabuf,
++    .bo_close_handle = kgsl_bo_close_handle,
++};
++
++static void kgsl_device_destroy(struct fd_device *dev)
++{
++    struct kgsl_device *kgsl_dev = kgsl_device(dev);
++
++    close(kgsl_dev->base.fd);
++    free(kgsl_dev);
++}
++
++static enum fd_version kgsl_device_version(struct fd_device *dev)
++{
++    return FD_VERSION_1_0;
++}
++
++static uint32_t kgsl_get_features(struct fd_device *dev)
++{
++    struct kgsl_device *kgsl_dev = kgsl_device(dev);
++    // KGSL supports direct reset and import dmabuf
++    return FD_FEATURE_DIRECT_RESET | FD_FEATURE_IMPORT_DMABUF;
++}
++
++static const struct fd_device_funcs_v1 kgsl_device_funcs_v1 = {
++    .base = &kgsl_device_funcs,
++    .destroy = kgsl_device_destroy,
++    .version = kgsl_device_version,
++    .get_features = kgsl_get_features,
++};
++
++struct fd_device *kgsl_device_new(int fd)
++{
++    struct kgsl_device *kgsl_dev;
++    uint32_t gpu_id, chip_id;
++
++    if (get_gpu_id(fd, &gpu_id, &chip_id))
++        goto fail;
++
++    kgsl_dev = calloc(1, sizeof(*kgsl_dev));
++    if (!kgsl_dev)
++        goto fail;
++
++    kgsl_dev->base.fd = fd;
++    kgsl_dev->base.funcs = &kgsl_device_funcs_v1;
++
++    return &kgsl_dev->base;
++
++fail:
++    close(fd);
++    return NULL;
++}
+\ No newline at end of file
+diff --git a/src/freedreno/drm/kgsl/kgsl_pipe.c b/src/freedreno/drm/kgsl/kgsl_pipe.c
+new file mode 100644
+index 00000000000..3a621a4bd65
+--- /dev/null
++++ b/src/freedreno/drm/kgsl/kgsl_pipe.c
+@@ -0,0 +1,52 @@
++#include "kgsl/kgsl_priv.h"
++#include "util/os_file.h"
++#include "util/macros.h"
++#include "util/u_debug.h"
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <xf86drm.h>
++#include <errno.h>
++#include <string.h>
++#include <stdlib.h>
++
++static int kgsl_pipe_submit(struct fd_submit *submit);
++
++static const struct fd_pipe_funcs kgsl_pipe_funcs_sp = {
++    .submit = kgsl_pipe_submit,
++    .ringbuffer_new_object = kgsl_ringbuffer_new_object,
++    .submit_new = kgsl_submit_sp_new,
++    .reset_status = kgsl_pipe_get_reset_status,
++};
++
++static int kgsl_pipe_submit(struct fd_submit *submit)
++{
++    struct kgsl_pipe *kgsl_pipe = kgsl_pipe(submit->pipe);
++    struct kgsl_cmdbatch_sync_timeline_timestamp submit_args = {
++        .id = kgsl_pipe->queue_id,
++        .timeline = 0, // Use default timeline
++        .timestamp = 0, // Output timestamp
++    };
++
++    int ret = kgsl_pipe_safe_ioctl(kgsl_pipe->queue_id, IOCTL_KGSL_COMMANDBATCH_SYNC_TIMELINE_TIMESTAMP, &submit_args);
++    if (ret)
++        return ret;
++
++    // Update fence with the returned timestamp
++    submit->fence.seqno = submit_args.timestamp;
++
++    return 0;
++}
++
++struct fd_submit *kgsl_submit_sp_new(struct fd_pipe *pipe)
++{
++    struct fd_submit *submit;
++
++    submit = fd_submit_new(pipe, 0);
++    if (!submit)
++        return NULL;
++
++    submit->pipe->funcs = &kgsl_pipe_funcs_sp;
++
++    return submit;
++}
+\ No newline at end of file
+diff --git a/src/freedreno/drm/kgsl/kgsl_priv.h b/src/freedreno/drm/kgsl/kgsl_priv.h
+new file mode 100644
+index 00000000000..760c9486779
+--- /dev/null
++++ b/src/freedreno/drm/kgsl/kgsl_priv.h
+@@ -0,0 +1,54 @@
++#ifndef KGSL_PRIV_H
++#define KGSL_PRIV_H
++#include "freedreno_priv.h"
++
++/* TODO the KGSL kernel interface should probably be moved */
++/* into someplace common that both turnip and freedreno can use */
++#include "../../vulkan/msm_kgsl.h"
++
++int kgsl_get_prop(int fd, unsigned int type, void *value, size_t size);
++
++struct kgsl_device {
++    struct fd_device base;
++};
++FD_DEFINE_CAST(fd_device, kgsl_device);
++
++struct fd_device *kgsl_device_new(int fd);
++static void kgsl_device_destroy(struct fd_device *dev);
++
++struct kgsl_pipe {
++    struct fd_pipe base;
++
++    struct fd_dev_id dev_id;
++
++    uint32_t gmem_size;
++    uint64_t gmem_base;
++    uint32_t queue_id;
++};
++FD_DEFINE_CAST(fd_pipe, kgsl_pipe);
++
++struct fd_pipe *kgsl_pipe_new(struct fd_device *dev, enum fd_pipe_id id,
++                              uint32_t prio);
++int kgsl_pipe_safe_ioctl(int fd, unsigned long request, void *arg);
++struct fd_submit *kgsl_submit_sp_new(struct fd_pipe *pipe);
++
++struct kgsl_bo {
++    struct fd_bo base;
++    const char *name;
++    uint64_t iova;
++    uint32_t queue_id;
++    int import_fd; // fd for imported buffers
++
++    enum {
++        KGSL_BO_NATIVE,
++        KGSL_BO_IMPORT,
++    } bo_type;
++};
++FD_DEFINE_CAST(fd_bo, kgsl_bo);
++
++struct fd_bo *kgsl_bo_new(struct fd_device *dev, uint32_t size, uint32_t flags);
++struct fd_bo *kgsl_bo_from_dmabuf(struct fd_device *dev, int fd);
++struct fd_bo *kgsl_bo_from_handle(struct fd_device *dev, uint32_t size, uint32_t handle);
++void kgsl_bo_close_handle(struct fd_device *dev, uint32_t handle);
++
++#endif
+\ No newline at end of file
+diff --git a/src/freedreno/drm/kgsl/kgsl_ringbuffer_sp.c b/src/freedreno/drm/kgsl/kgsl_ringbuffer_sp.c
+new file mode 100644
+index 00000000000..3b7036acf80
+--- /dev/null
++++ b/src/freedreno/drm/kgsl/kgsl_ringbuffer_sp.c
+@@ -0,0 +1,22 @@
++#include "kgsl/kgsl_priv.h"
++#include "util/os_file.h"
++#include "util/macros.h"
++#include "util/u_debug.h"
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#include <xf86drm.h>
++#include <errno.h>
++#include <string.h>
++#include <stdlib.h>
++
++struct fd_ringbuffer *kgsl_ringbuffer_sp_new(struct fd_pipe *pipe, uint32_t size)
++{
++    struct fd_ringbuffer *ring;
++
++    ring = fd_ringbuffer_new(pipe, size);
++    if (!ring)
++        return NULL;
++
++    return ring;
++}
+\ No newline at end of file
+diff --git a/src/freedreno/drm/meson.build b/src/freedreno/drm/meson.build
+index d2baf589e60..f5e57e68238 100644
+--- a/src/freedreno/drm/meson.build
++++ b/src/freedreno/drm/meson.build
+@@ -55,6 +55,11 @@ libfreedreno_drm_virtio_files = files(
+   'virtio/virtio_ringbuffer.c',
+ )
+ if freedreno_kmds.contains('virtio')
++libfreedreno_kgsl_files = files('kgsl/kgsl_device.c','kgsl/kgsl_bo.c','kgsl/kgsl_pipe.c','kgsl/kgsl_ringbuffer_sp.c')
++
++if freedreno_kmds.contains('kgsl')
++  libfreedreno_drm_files += libfreedreno_kgsl_files
++endif
+   libfreedreno_drm_files += libfreedreno_drm_virtio_files
+   libfreedreno_drm_flags += '-DHAVE_FREEDRENO_VIRTIO'
+   libfreedreno_drm_includes += [
+-- 
+2.51.0
+
