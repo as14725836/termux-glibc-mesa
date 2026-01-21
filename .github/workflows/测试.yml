@@ -79,7 +79,6 @@ jobs:
           echo "🔧 应用 FD710 / FD720 补丁"
           cd mesa
           git apply --verbose ../full_fixed_710_720-1.patch
-          git apply --verbose ../fix_a725_a730.patch
           git apply --verbose ../0003-fix-for-anon-file.patch
           git apply --verbose ../perfect_fix.patch
           git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
