@@ -1,250 +1,88 @@
-name: Build glibc 2.41 armhf
+name: Build Glibc for ARMhf (简化版)
+
+permissions:
+  contents: write
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-  schedule:
-    - cron: '0 22 * * *'
-
-env:
-  GLIBC_VERSION: "2.41"
-  TARGET: "arm-linux-gnueabihf"
-
+    inputs:
+      glibc_version:
+        description: "Glibc版本"
+        required: true
+        default: "2.41"
+  
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
-    
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    
-    - name: Setup environment
-      run: |
-        echo "Building glibc $GLIBC_VERSION for $TARGET"
-        uname -a
-        df -h
-        free -h
-    
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          build-essential \
-          gcc-arm-linux-gnueabihf \
-          g++-arm-linux-gnueabihf \
-          binutils-arm-linux-gnueabihf \
-          libc6-dev-armhf-cross \
-          bison flex texinfo gawk \
-          automake autoconf libtool \
-          pkg-config gettext \
-          python3 python3-pip \
-          git wget curl file \
-          cmake ninja-build \
-          gperf help2man \
-          libgmp-dev libmpfr-dev \
-          libmpc-dev libisl-dev \
-          zlib1g-dev
-    
-    - name: Download sources
-      run: |
-        mkdir -p $HOME/glibc-build
-        cd $HOME/glibc-build
-        
-        echo "Downloading glibc $GLIBC_VERSION..."
-        wget -c https://ftp.gnu.org/gnu/glibc/glibc-$GLIBC_VERSION.tar.xz
-        tar -xf glibc-$GLIBC_VERSION.tar.xz
-        
-        echo "Downloading kernel headers..."
-        KERNEL_VERSION="6.6.30"
-        wget -c https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$KERNEL_VERSION.tar.xz
-        tar -xf linux-$KERNEL_VERSION.tar.xz
-    
-    - name: Create sysroot
-      run: |
-        SYSROOT="$HOME/armhf-sysroot"
-        mkdir -p $SYSROOT
-        
-        # Create directory structure
-        mkdir -p $SYSROOT/{etc,usr/{bin,lib,include,share},lib,var,tmp}
-        
-        # Install kernel headers
-        cd $HOME/glibc-build/linux-6.6.30
-        make ARCH=arm INSTALL_HDR_PATH=$SYSROOT/usr headers_install
-        
-        echo "SYSROOT=$SYSROOT" >> $GITHUB_ENV
-    
-    - name: Build glibc
-      run: |
-        cd $HOME/glibc-build/glibc-$GLIBC_VERSION
-        mkdir -p build && cd build
-        
-        # Set environment variables
-        export CC="arm-linux-gnueabihf-gcc"
-        export CXX="arm-linux-gnueabihf-g++"
-        export AR="arm-linux-gnueabihf-ar"
-        export AS="arm-linux-gnueabihf-as"
-        export LD="arm-linux-gnueabihf-ld"
-        export RANLIB="arm-linux-gnueabihf-ranlib"
-        export STRIP="arm-linux-gnueabihf-strip"
-        
-        export CFLAGS="-O2 -march=armv7-a -mfpu=vfpv3-d16 -mfloat-abi=hard"
-        export CXXFLAGS="$CFLAGS"
-        
-        # Configure glibc
-        ../configure \
-          --host=arm-linux-gnueabihf \
-          --prefix=/usr \
-          --with-headers=$HOME/armhf-sysroot/usr/include \
-          --enable-kernel=3.2 \
-          --enable-add-ons \
-          --disable-werror \
-          --with-arch=armv7-a \
-          --with-fpu=vfpv3-d16 \
-          --with-float=hard \
-          --disable-profile \
-          --enable-stackguard-randomization
-        
-        # Build
-        echo "Building glibc..."
-        make -j$(nproc) 2>&1 | tee build.log
-        
-        # Install to sysroot
-        echo "Installing to sysroot..."
-        make install_root=$HOME/armhf-sysroot install
-        
-        # Check what files were installed
-        echo "Checking installed files..."
-        find $HOME/armhf-sysroot -name "*.so*" | head -20
-        
-        # Create symlinks
-        cd $HOME/armhf-sysroot
-        ln -sf usr/lib lib
-        ln -sf usr/bin bin
-        ln -sf usr/sbin sbin
-    
-    - name: Create system config files
-      run: |
-        SYSROOT="$HOME/armhf-sysroot"
-        
-        # Create ld.so.conf using echo
-        echo "/usr/lib" > $SYSROOT/etc/ld.so.conf
-        echo "/usr/local/lib" >> $SYSROOT/etc/ld.so.conf
-        echo "/lib" >> $SYSROOT/etc/ld.so.conf
-        
-        # Create nsswitch.conf
-        echo "passwd: files" > $SYSROOT/etc/nsswitch.conf
-        echo "group: files" >> $SYSROOT/etc/nsswitch.conf
-        echo "hosts: files dns" >> $SYSROOT/etc/nsswitch.conf
-        
-        # Create minimal hosts file
-        echo "127.0.0.1 localhost" > $SYSROOT/etc/hosts
-        echo "::1 localhost" >> $SYSROOT/etc/hosts
-    
-    - name: Package artifacts
-      run: |
-        SYSROOT="$HOME/armhf-sysroot"
-        
-        # First check what files actually exist
-        echo "Checking existing files in sysroot..."
-        find $SYSROOT/usr/lib -name "*.so*" | head -30
-        find $SYSROOT -name "ld-linux*" 2>/dev/null
-        find $SYSROOT -name "libc.so*" 2>/dev/null
-        find $SYSROOT -name "libm.so*" 2>/dev/null
-        find $SYSROOT -name "libpthread.so*" 2>/dev/null
-        find $SYSROOT -name "librt.so*" 2>/dev/null
-        find $SYSROOT -name "libdl.so*" 2>/dev/null
-        find $SYSROOT -name "libresolv.so*" 2>/dev/null
-        
-        # Create full sysroot package
-        cd $SYSROOT
-        tar -czf $HOME/glibc-2.41-armhf-full.tar.gz .
-        
-        # Create minimal package - use a safer approach
-        cd $SYSROOT
-        mkdir -p $HOME/temp-package
-        
-        # Copy existing files only
-        echo "Collecting files for minimal package..."
-        
-        # Find and copy glibc libraries
-        for lib in libc libm libpthread librt libdl libresolv; do
-          if find usr/lib -name "${lib}.so*" -print0 2>/dev/null | grep -q .; then
-            find usr/lib -name "${lib}.so*" -exec cp --parents {} $HOME/temp-package/ \;
-          else
-            echo "Warning: $lib not found"
+      - name: 安装ARMhf交叉编译工具
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential \
+            gcc-arm-linux-gnueabihf \
+            g++-arm-linux-gnueabihf \
+            binutils-arm-linux-gnueabihf \
+            wget xz-utils
+      
+      - name: 下载Glibc源代码
+        run: |
+          VERSION="${{ github.event.inputs.glibc_version }}"
+          wget "https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.xz" || \
+          wget "https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.gz"
+          
+          if [ -f "glibc-${VERSION}.tar.xz" ]; then
+            tar -xf "glibc-${VERSION}.tar.xz"
+          elif [ -f "glibc-${VERSION}.tar.gz" ]; then
+            tar -xzf "glibc-${VERSION}.tar.gz"
           fi
-        done
-        
-        # Find and copy dynamic loader
-        if find . -name "ld-linux*" -print0 2>/dev/null | grep -q .; then
-          find . -name "ld-linux*" -exec cp --parents {} $HOME/temp-package/ \;
-        fi
-        
-        # Copy headers
-        if [ -d usr/include ]; then
-          cp -r usr/include $HOME/temp-package/usr/
-        fi
-        
-        # Copy config files
-        if [ -f etc/ld.so.conf ]; then
-          cp --parents etc/ld.so.conf $HOME/temp-package/
-        fi
-        
-        # Create the minimal package
-        cd $HOME/temp-package
-        tar -czf $HOME/glibc-2.41-armhf-minimal.tar.gz .
-        
-        # Alternative: Use a tar command that doesn't fail on missing files
-        cd $SYSROOT
-        tar -czf $HOME/glibc-2.41-armhf-basic.tar.gz \
-          usr/include \
-          etc/ld.so.conf \
-          $(find usr/lib -name "libc.so*" -o -name "libm.so*" -o -name "libpthread.so*" -o -name "librt.so*" -o -name "libdl.so*" -o -name "libresolv.so*" 2>/dev/null) \
-          $(find . -name "ld-linux*" 2>/dev/null) 2>/dev/null || true
-        
-        # Create version info
-        echo "glibc_version: 2.41" > $HOME/version.txt
-        echo "target: arm-linux-gnueabihf" >> $HOME/version.txt
-        echo "build_date: $(date -Iseconds)" >> $HOME/version.txt
-        echo "build_host: $(uname -m)" >> $HOME/version.txt
-    
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: glibc-2.41-armhf
-        path: |
-          $HOME/glibc-2.41-armhf-full.tar.gz
-          $HOME/glibc-2.41-armhf-minimal.tar.gz
-          $HOME/glibc-2.41-armhf-basic.tar.gz
-          $HOME/version.txt
-        retention-days: 30
-    
-    - name: Test the build
-      run: |
-        echo "Testing the build..."
-        
-        # List important files
-        echo "Files in minimal package:"
-        tar -tzf $HOME/glibc-2.41-armhf-minimal.tar.gz | head -20
-        
-        # Create a test directory
-        mkdir -p $HOME/test-sysroot
-        tar -xzf $HOME/glibc-2.41-armhf-minimal.tar.gz -C $HOME/test-sysroot
-        
-        echo "Files in test sysroot:"
-        find $HOME/test-sysroot -name "*.so*" | head -10
-        find $HOME/test-sysroot -name "ld-linux*" 2>/dev/null
-        
-        # Test if we can compile a simple program
-        echo '#include <stdio.h>' > $HOME/test.c
-        echo 'int main() {' >> $HOME/test.c
-        echo '    printf("Glibc version test\\n");' >> $HOME/test.c
-        echo '    #ifdef __GLIBC__' >> $HOME/test.c
-        echo '    printf("GLIBC version: %d.%d\\n", __GLIBC__, __GLIBC_MINOR__);' >> $HOME/test.c
-        echo '    #endif' >> $HOME/test.c
-        echo '    return 0;' >> $HOME/test.c
-        echo '}' >> $HOME/test.c
-        
-        echo "✅ Build completed successfully"
+      
+      - name: 配置和编译ARMhf Glibc
+        run: |
+          VERSION="${{ github.event.inputs.glibc_version }}"
+          cd glibc-${VERSION}
+          
+          mkdir -p build
+          cd build
+          
+          # 配置为ARMhf
+          ../configure \
+            --prefix=/usr \
+            --host=arm-linux-gnueabihf \
+            --disable-multilib
+          
+          # 编译
+          make -j$(nproc)
+      
+      - name: 提取lib32文件
+        run: |
+          VERSION="${{ github.event.inputs.glibc_version }}"
+          cd glibc-${VERSION}/build
+          
+          # 创建lib32目录结构
+          mkdir -p ../../../glibc/lib32
+          
+          # 安装到临时位置
+          DESTDIR="../../../temp_install" make install
+          
+          # 复制关键库文件到lib32
+          cp -r ../../../temp_install/usr/lib/arm-linux-gnueabihf/* ../../../glibc/lib32/
+          cp -r ../../../temp_install/lib/arm-linux-gnueabihf/* ../../../glibc/lib32/
+          
+          # 清理临时文件
+          rm -rf ../../../temp_install
+      
+      - name: 打包lib32
+        run: |
+          VERSION="${{ github.event.inputs.glibc_version }}"
+          
+          # 打包glibc/lib32文件夹
+          tar -czf "glibc-${VERSION}-armhf-lib32.tar.gz" -C glibc lib32
+          
+          echo "ARTIFACT=glibc-${VERSION}-armhf-lib32.tar.gz" >> $GITHUB_ENV
+      
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: glibc-armhf-lib32
+          path: ${{ env.ARTIFACT }}
