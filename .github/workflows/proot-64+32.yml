@@ -223,7 +223,7 @@ jobs:
           PACK_START=$(date +%s)
           
           TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C /opt .
+          tar -czvf "../${TAR_NAME}" -C /opt mesa
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
