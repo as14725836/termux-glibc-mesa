@@ -69,7 +69,7 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout adreno-main
+          git checkout test/adreno-gen8
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
@@ -78,7 +78,6 @@ jobs:
         run: |
           echo "🔧 应用 FD710 / FD720 补丁"
           cd mesa
-          git apply --verbose ../full_fixed_710_720-1.patch
           git apply --verbose ../0003-fix-for-anon-file.patch
           git apply --verbose ../perfect_fix.patch
           git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
