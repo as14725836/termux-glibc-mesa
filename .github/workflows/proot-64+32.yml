@@ -88,8 +88,8 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git
-          cd mesa-kgsl-25.2.5
+          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git mesa
+          cd mesa
       
       - name: 自定义品牌
         run: |
@@ -101,16 +101,16 @@ jobs:
       
       - name: 构建64位Mesa
         run: |
-          cd mesa-kgsl-25.2.5
+          cd mesa
           BUILD_START=$(date +%s)
-          sudo mkdir -p /opt/mesa
-          sudo chmod 777 -R /opt
+          sudo mkdir -p /data/data/com.termux/files/usr/glibc
+          sudo chmod 777 -R /data
           
           echo "🏗️ 开始构建64位Mesa..."
           mkdir -p builddir64
           meson setup builddir64 \
-            --libdir=lib/aarch64-linux-gnu \
-            -Dprefix=/opt/mesa \
+            --libdir=lib \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Db_lto=true \
@@ -153,7 +153,7 @@ jobs:
       
       - name: 构建32位Mesa
         run: |
-          cd mesa-kgsl-25.2.5
+          cd mesa
           BUILD_START=$(date +%s)
           
           echo "🏗️ 开始构建32位Mesa..."
@@ -177,8 +177,8 @@ jobs:
           
           meson setup builddir32 \
             --cross-file armhf-cross.ini \
-            --libdir=lib/arm-linux-gnueabihf \
-            -Dprefix=/opt/mesa \
+            --libdir=lib32 \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Dplatforms=x11 \
@@ -219,10 +219,10 @@ jobs:
       - name: 打包构建产物
         run: |
           echo "📦 开始打包Mesa产物..."
-          cd mesa-kgsl-25.2.5
+          cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
+          TAR_NAME="termux-mesa-${VERSION}-glibc.tar.gz"
           tar -czvf "../${TAR_NAME}" -C /opt mesa
           
           PACK_END=$(date +%s)
