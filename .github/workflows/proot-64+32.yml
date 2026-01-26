@@ -207,13 +207,6 @@ jobs:
           
           ninja -C builddir32 -j$(nproc)
           
-          # 安装32位库到指定目录
-          sudo mkdir -p /opt/mesa/lib/arm-linux-gnueabihf
-          sudo cp -r builddir32/src/glx/.libs/* /opt/mesa/lib/arm-linux-gnueabihf/ || true
-          sudo cp -r builddir32/src/egl/.libs/* /opt/mesa/lib/arm-linux-gnueabihf/ || true
-          sudo cp -r builddir32/src/mesa/.libs/* /opt/mesa/lib/arm-linux-gnueabihf/ || true
-          sudo cp -r builddir32/src/gallium/targets/*/.libs/* /opt/mesa/lib/arm-linux-gnueabihf/ || true
-          
           BUILD_END=$(date +%s)
           echo "32位构建耗时: $((BUILD_END - BUILD_START)) 秒"
           
@@ -239,5 +232,5 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: mesa-proot-multiarch
+          name: mesa-proot-64+32
           path: ${{ env.ARTIFACT_NAME }}
