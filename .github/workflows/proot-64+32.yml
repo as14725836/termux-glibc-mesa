@@ -159,20 +159,28 @@ jobs:
           echo "🏗️ 开始构建32位Mesa..."
           mkdir -p builddir32
           
-          # 设置32位交叉编译环境
-          export CC="arm-linux-gnueabihf-gcc"
-          export CXX="arm-linux-gnueabihf-g++"
-          export AR="arm-linux-gnueabihf-ar"
-          export LD="arm-linux-gnueabihf-ld"
-          export PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig:$PKG_CONFIG_PATH"
-          export PKG_CONFIG_LIBDIR="/usr/lib/arm-linux-gnueabihf/pkgconfig"
+          # 创建交叉编译配置文件
+          cat > armhf-cross.ini << 'EOF'
+          [binaries]
+          c = 'arm-linux-gnueabihf-gcc'
+          cpp = 'arm-linux-gnueabihf-g++'
+          ar = 'arm-linux-gnueabihf-ar'
+          strip = 'arm-linux-gnueabihf-strip'
+          pkg-config = 'arm-linux-gnueabihf-pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = 'arm'
+          cpu = 'arm'
+          endian = 'little'
+          EOF
           
           meson setup builddir32 \
-            --cross-file /usr/share/meson/cross/arm-linux-gnueabihf \
+            --cross-file armhf-cross.ini \
             --libdir=lib/arm-linux-gnueabihf \
+            -Dprefix=/opt/mesa \
             -Dbuildtype=release \
             -Doptimization=3 \
-            -Dprefix=/opt/mesa \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
