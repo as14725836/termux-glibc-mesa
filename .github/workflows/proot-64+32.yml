@@ -223,7 +223,7 @@ jobs:
           PACK_START=$(date +%s)
           
           TAR_NAME="termux-mesa-${VERSION}-glibc.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C /opt mesa
+          tar -czvf "../${TAR_NAME}" -C /data/data/com.termux/files/usr glibc
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
