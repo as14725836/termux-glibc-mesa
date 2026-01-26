@@ -1,4 +1,4 @@
-name: proot Mesa (aarch64 + armhf, Auto Update + Detailed Log)
+name: proot 64+32 Mesa (aarch64 + armhf, Auto Update + Detailed Log)
 on:
   workflow_dispatch:
   push:
