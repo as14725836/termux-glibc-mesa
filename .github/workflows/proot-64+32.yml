@@ -241,15 +241,3 @@ jobs:
         with:
           name: mesa-proot-multiarch
           path: ${{ env.ARTIFACT_NAME }}
-      
-      - name: 更新状态文件
-        run: |
-          LATEST_HASH=${{ needs.check-updates.outputs.latest_hash }}
-          if [ -n "$LATEST_HASH" ]; then
-            echo "$LATEST_HASH" > .mesa_latest_commit
-            git config --global user.name "GitHub Actions"
-            git config --global user.email "actions@github.com"
-            git add .mesa_latest_commit
-            git commit -m "Update mesa latest commit to $LATEST_HASH"
-            git push
-          fi
