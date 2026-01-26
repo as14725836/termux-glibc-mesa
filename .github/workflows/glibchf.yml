@@ -1,4 +1,4 @@
-name: Build Glibc for ARMhf (简化版)
+name: Build Glibc for ARMhf (简化保留路径)
 
 permissions:
   contents: write
@@ -10,7 +10,7 @@ on:
         description: "Glibc版本"
         required: true
         default: "2.41"
-  
+
 jobs:
   build:
     runs-on: ubuntu-24.04-arm
@@ -23,66 +23,107 @@ jobs:
             gcc-arm-linux-gnueabihf \
             g++-arm-linux-gnueabihf \
             binutils-arm-linux-gnueabihf \
-            wget xz-utils
+            wget xz-utils bison flex
       
       - name: 下载Glibc源代码
         run: |
           VERSION="${{ github.event.inputs.glibc_version }}"
-          wget "https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.xz" || \
-          wget "https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.gz"
-          
-          if [ -f "glibc-${VERSION}.tar.xz" ]; then
-            tar -xf "glibc-${VERSION}.tar.xz"
-          elif [ -f "glibc-${VERSION}.tar.gz" ]; then
-            tar -xzf "glibc-${VERSION}.tar.gz"
-          fi
+          echo "下载 glibc-${VERSION}"
+          wget -q "https://ftp.gnu.org/gnu/glibc/glibc-${VERSION}.tar.xz"
+          tar -xf "glibc-${VERSION}.tar.xz"
+          echo "文件已下载: glibc-${VERSION}"
       
       - name: 配置和编译ARMhf Glibc
         run: |
           VERSION="${{ github.event.inputs.glibc_version }}"
-          cd glibc-${VERSION}
+          cd "glibc-${VERSION}"
           
+          echo "配置 glibc..."
           mkdir -p build
           cd build
           
-          # 配置为ARMhf
           ../configure \
             --prefix=/usr \
             --host=arm-linux-gnueabihf \
-            --disable-multilib
+            --disable-multilib \
+            --enable-kernel=4.4
           
-          # 编译
+          echo "编译 glibc..."
           make -j$(nproc)
+          
+          echo "编译完成"
       
-      - name: 提取lib32文件
-        run: |
-          VERSION="${{ github.event.inputs.glibc_version }}"
-          cd glibc-${VERSION}/build
-          
-          # 创建lib32目录结构
-          mkdir -p ../../../glibc/lib32
-          
-          # 安装到临时位置
-          DESTDIR="../../../temp_install" make install
-          
-          # 复制关键库文件到lib32
-          cp -r ../../../temp_install/usr/lib/arm-linux-gnueabihf/* ../../../glibc/lib32/
-          cp -r ../../../temp_install/lib/arm-linux-gnueabihf/* ../../../glibc/lib32/
-          
-          # 清理临时文件
-          rm -rf ../../../temp_install
-      
-      - name: 打包lib32
+      - name: 安装并创建lib32结构
         run: |
           VERSION="${{ github.event.inputs.glibc_version }}"
           
-          # 打包glibc/lib32文件夹
-          tar -czf "glibc-${VERSION}-armhf-lib32.tar.gz" -C glibc lib32
+          # 创建安装目录
+          mkdir -p "/tmp/glibc-install"
+          cd "glibc-${VERSION}/build"
           
-          echo "ARTIFACT=glibc-${VERSION}-armhf-lib32.tar.gz" >> $GITHUB_ENV
+          # 安装到临时目录
+          echo "安装到临时目录..."
+          DESTDIR="/tmp/glibc-install" make install
+          
+          # 创建 glibc/lib32 结构
+          mkdir -p "/tmp/glibc/lib32"
+          
+          # 复制 ARMhf 库文件
+          echo "复制库文件到 lib32..."
+          if [ -d "/tmp/glibc-install/usr/lib/arm-linux-gnueabihf" ]; then
+            cp -r "/tmp/glibc-install/usr/lib/arm-linux-gnueabihf/"* "/tmp/glibc/lib32/"
+          fi
+          
+          if [ -d "/tmp/glibc-install/lib/arm-linux-gnueabihf" ]; then
+            cp -r "/tmp/glibc-install/lib/arm-linux-gnueabihf/"* "/tmp/glibc/lib32/"
+          fi
+          
+          # 列出文件确认
+          echo "lib32 目录内容:"
+          ls -la "/tmp/glibc/lib32/" || echo "lib32目录为空"
+          
+          # 创建版本文件
+          echo "Glibc ${VERSION} for ARMhf" > "/tmp/glibc/version.txt"
+          echo "Built: $(date)" >> "/tmp/glibc/version.txt"
+          echo "Architecture: arm-linux-gnueabihf" >> "/tmp/glibc/version.txt"
+      
+      - name: 打包文件
+        run: |
+          VERSION="${{ github.event.inputs.glibc_version }}"
+          
+          echo "当前工作目录: $(pwd)"
+          echo "打包目录内容:"
+          ls -la "/tmp/glibc/" || echo "/tmp/glibc 不存在"
+          ls -la "/tmp/glibc/lib32/" || echo "/tmp/glibc/lib32 不存在"
+          
+          # 创建完整包
+          cd /tmp
+          tar -czf "glibc-${VERSION}-armhf-full.tar.gz" glibc/
+          
+          # 创建最小包 (只包含lib32)
+          tar -czf "glibc-${VERSION}-armhf-minimal.tar.gz" -C glibc lib32/
+          
+          # 创建基础包
+          tar -czf "glibc-${VERSION}-armhf-basic.tar.gz" glibc/lib32/
+          
+          # 复制到工作目录
+          cp "glibc-${VERSION}-armhf-full.tar.gz" "$GITHUB_WORKSPACE/"
+          cp "glibc-${VERSION}-armhf-minimal.tar.gz" "$GITHUB_WORKSPACE/"
+          cp "glibc-${VERSION}-armhf-basic.tar.gz" "$GITHUB_WORKSPACE/"
+          cp "glibc/version.txt" "$GITHUB_WORKSPACE/"
+          
+          echo "打包完成的文件:"
+          ls -la "$GITHUB_WORKSPACE/"*.tar.gz
+          echo "ARTIFACT_FULL=glibc-${VERSION}-armhf-full.tar.gz" >> $GITHUB_ENV
+          echo "ARTIFACT_MIN=glibc-${VERSION}-armhf-minimal.tar.gz" >> $GITHUB_ENV
+          echo "ARTIFACT_BASIC=glibc-${VERSION}-armhf-basic.tar.gz" >> $GITHUB_ENV
       
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: glibc-armhf-lib32
-          path: ${{ env.ARTIFACT }}
+          name: glibc-armhf-packages
+          path: |
+            ${{ env.ARTIFACT_FULL }}
+            ${{ env.ARTIFACT_MIN }}
+            ${{ env.ARTIFACT_BASIC }}
+            version.txt
