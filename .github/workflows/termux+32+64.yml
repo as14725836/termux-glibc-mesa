@@ -1,0 +1,244 @@
+name: termux glibc 64+32 Mesa (aarch64 + armhf, Auto Update + Detailed Log)
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - 'refs/tags/**'
+  schedule:
+    - cron: "0 22 * * *"
+permissions:
+  contents: write
+  actions: write
+jobs:
+  check-updates:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      new_commit: ${{ steps.check.outputs.new_commit }}
+      latest_hash: ${{ steps.check.outputs.latest_hash }}
+    steps:
+      - name: 检查 Mesa 上游更新
+        id: check
+        run: |
+          echo "🔍 检查 Mesa 上游提交..."
+          LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
+          echo "最新上游提交: $LATEST_HASH"
+          
+          STATE_FILE=".mesa_latest_commit"
+          if [ -f "$STATE_FILE" ]; then
+            LAST_HASH=$(cat $STATE_FILE)
+          else
+            LAST_HASH=""
+          fi
+          echo "上次构建: $LAST_HASH"
+          
+          if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
+            echo "new_commit=true" >> $GITHUB_OUTPUT
+            echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
+          else
+            echo "new_commit=false" >> $GITHUB_OUTPUT
+          fi
+  build:
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      
+      - name: 显示构建环境信息
+        run: |
+          lsb_release -a || true
+          uname -a
+          lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
+          free -h
+          df -h
+      
+      - name: 安装系统依赖
+        run: |
+          sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt update
+          sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
+            libxext-dev llvm-19 libwayland-egl-backend-dev libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
+            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
+            libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip openssh-server \
+            pulseaudio libasound2-plugins wget unzip cmake git g++-arm-linux-gnueabihf
+          pip3 install --user meson ninja mako
+      
+      - name: 添加armhf架构支持并安装32位依赖
+        run: |
+          echo "🔄 添加armhf架构支持..."
+          sudo dpkg --add-architecture armhf
+          sudo apt update
+          sudo apt upgrade -y
+          
+          echo "📦 安装32位依赖包..."
+          sudo apt install -y zenity:armhf libstdc++6:armhf \
+            zlib1g-dev:armhf libexpat1-dev:armhf libdrm-dev:armhf libx11-dev:armhf \
+            libxext-dev:armhf libxdamage-dev:armhf libxcb-glx0-dev:armhf libx11-xcb-dev:armhf \
+            libxcb-dri2-0-dev:armhf libxcb-dri3-dev:armhf libxcb-present-dev:armhf \
+            libxshmfence-dev:armhf libxxf86vm-dev:armhf libxrandr-dev:armhf libwayland-dev:armhf \
+            wayland-protocols:armhf libwayland-egl-backend-dev:armhf libxcb-shm0-dev:armhf \
+            pkg-config:armhf libgbm-dev:armhf libegl1-mesa-dev:armhf
+          
+          echo "📦 安装mesa构建依赖..."
+          sudo apt build-dep mesa -y
+          sudo apt install -f -y
+      
+      - name: 克隆 Mesa 正式版
+        run: |
+          echo "📥 克隆 Mesa 仓库..."
+          git clone https://gitlab.freedesktop.org/mesa/mesa.git mesa
+          cd mesa
+      - name: 应用 FD710 / FD720 补丁（来自仓库）
+        run: |
+          echo "🔧 应用 FD710 / FD720 补丁"
+          cd mesa
+          git apply --verbose ../full_fixed_710_720-1.patch
+          git apply --verbose ../0003-fix-for-anon-file.patch
+          git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
+          echo "✅ 补丁应用完成"
+      
+      - name: 自定义品牌
+        run: |
+          echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
+          cd mesa
+          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+      
+      - name: 构建64位Mesa
+        run: |
+          cd mesa
+          BUILD_START=$(date +%s)
+          sudo mkdir -p /data/data/com.termux/files/usr/glibc
+          sudo chmod 777 -R /data
+          
+          echo "🏗️ 开始构建64位Mesa..."
+          mkdir -p builddir64
+          meson setup builddir64 \
+            --libdir=lib \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
+            -Dbuildtype=release \
+            -Doptimization=3 \
+            -Db_lto=true \
+            -Dplatforms=x11,wayland \
+            -Degl-native-platform=wayland \
+            -Dglx=dri \
+            -Dglx-direct=true \
+            -Dopengl=true \
+            -Dgles1=enabled \
+            -Dgles2=enabled \
+            -Dglvnd=disabled \
+            -Degl=enabled \
+            -Dllvm=disabled \
+            -Dshared-llvm=disabled \
+            -Dshader-cache=enabled \
+            -Dshared-glapi=enabled \
+            -Dxlib-lease=enabled \
+            -Dvulkan-beta=true \
+            -Dlibunwind=disabled \
+            -Dvalgrind=disabled \
+            -Dmicrosoft-clc=disabled \
+            -Dgallium-rusticl=false \
+            -Dgallium-extra-hud=true \
+            -Dgallium-drivers=zink,freedreno \
+            -Dshader-cache-default=true \
+            -Dvulkan-drivers=freedreno \
+            -Dfreedreno-kmds=msm,kgsl \
+            -Dvideo-codecs=all \
+            -Dgbm=enabled \
+            -Dtools=drm-shim,freedreno \
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
+          
+          ninja -C builddir64 -j$(nproc)
+          ninja -C builddir64 install
+          
+          BUILD_END=$(date +%s)
+          echo "64位构建耗时: $((BUILD_END - BUILD_START)) 秒"
+      
+      - name: 构建32位Mesa
+        run: |
+          cd mesa
+          BUILD_START=$(date +%s)
+          
+          echo "🏗️ 开始构建32位Mesa..."
+          mkdir -p builddir32
+          
+          # 创建交叉编译配置文件
+          cat > armhf-cross.ini << 'EOF'
+          [binaries]
+          c = 'arm-linux-gnueabihf-gcc'
+          cpp = 'arm-linux-gnueabihf-g++'
+          ar = 'arm-linux-gnueabihf-ar'
+          strip = 'arm-linux-gnueabihf-strip'
+          pkg-config = 'arm-linux-gnueabihf-pkg-config'
+          [host_machine]
+          system = 'linux'
+          cpu_family = 'arm'
+          cpu = 'arm'
+          endian = 'little'
+          EOF
+          
+          meson setup builddir32 \
+            --cross-file armhf-cross.ini \
+            --libdir=lib32 \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
+            -Dbuildtype=release \
+            -Doptimization=3 \
+            -Dplatforms=x11 \
+            -Degl-native-platform=x11 \
+            -Dglx=dri \
+            -Dglx-direct=true \
+            -Dopengl=true \
+            -Dgles2=enabled \
+            -Dglvnd=disabled \
+            -Degl=enabled \
+            -Dllvm=disabled \
+            -Dshared-llvm=disabled \
+            -Dshader-cache=enabled \
+            -Dshared-glapi=enabled \
+            -Dvulkan-beta=true \
+            -Dlibunwind=disabled \
+            -Dvalgrind=disabled \
+            -Dgallium-drivers=zink,freedreno \
+            -Dshader-cache-default=true \
+            -Dvulkan-drivers=freedreno \
+            -Dfreedreno-kmds=kgsl \
+            -Dgbm=enabled \
+            -Db_ndebug=true \
+            -Db_lto=true \
+            -Dstrip=true
+          
+          ninja -C builddir32 -j$(nproc)
+          ninja -C builddir32 install
+          
+          BUILD_END=$(date +%s)
+          echo "32位构建耗时: $((BUILD_END - BUILD_START)) 秒"
+          
+          VERSION=$(cat VERSION)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+      
+      - name: 打包构建产物
+        run: |
+          echo "📦 开始打包Mesa产物..."
+          cd mesa
+          PACK_START=$(date +%s)
+          
+          TAR_NAME="termux-mesa-${VERSION}-glibc.tar.gz"
+          tar -czvf "../${TAR_NAME}" -C /data/data/com.termux/files/usr glibc
+          
+          PACK_END=$(date +%s)
+          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+          
+          echo "ARTIFACT_NAME=${TAR_NAME}" >> $GITHUB_ENV
+      
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesa-proot-64+32
+          path: ${{ env.ARTIFACT_NAME }}
