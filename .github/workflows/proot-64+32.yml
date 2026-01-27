@@ -88,17 +88,8 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/mesa/mesa.git mesa
+          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git mesa
           cd mesa
-
-      - name: 应用 FD710 / FD720 补丁（来自仓库）
-        run: |
-          echo "🔧 应用 FD710 / FD720 补丁"
-          cd mesa
-          git apply --verbose ../full_fixed_710_720-1.patch
-          git apply --verbose ../0003-fix-for-anon-file.patch
-          git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
-          echo "✅ 补丁应用完成"
       
       - name: 自定义品牌
         run: |
@@ -112,14 +103,14 @@ jobs:
         run: |
           cd mesa
           BUILD_START=$(date +%s)
-          sudo mkdir -p /data/data/com.termux/files/usr/glibc
-          sudo chmod 777 -R /data
+          sudo mkdir -p /opt/mesa
+          sudo chmod 777 -R /opt
           
           echo "🏗️ 开始构建64位Mesa..."
           mkdir -p builddir64
           meson setup builddir64 \
-            --libdir=lib \
-            -Dprefix=/data/data/com.termux/files/usr/glibc \
+            --libdir=lib/aarch64-linux-gnu \
+            -Dprefix=/opt/mesa \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Db_lto=true \
@@ -185,8 +176,8 @@ jobs:
           
           meson setup builddir32 \
             --cross-file armhf-cross.ini \
-            --libdir=lib32 \
-            -Dprefix=/data/data/com.termux/files/usr/glibc \
+            --libdir=lib/arm-linux-gnueabihf \
+            -Dprefix=/opt/mesa \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Dplatforms=x11 \
@@ -230,8 +221,8 @@ jobs:
           cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="termux-mesa-${VERSION}-glibc.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C /data/data/com.termux/files/usr glibc
+          TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
+          tar -czvf "../${TAR_NAME}" -C /opt mesa
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
