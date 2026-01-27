@@ -103,14 +103,14 @@ jobs:
         run: |
           cd mesa
           BUILD_START=$(date +%s)
-          sudo mkdir -p /opt/mesa
-          sudo chmod 777 -R /opt
+          sudo mkdir -p /data/data/com.termux/files/usr/glibc
+          sudo chmod 777 -R /data
           
           echo "🏗️ 开始构建64位Mesa..."
           mkdir -p builddir64
           meson setup builddir64 \
-            --libdir=lib/aarch64-linux-gnu \
-            -Dprefix=/opt/mesa \
+            --libdir=lib \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Db_lto=true \
@@ -176,8 +176,8 @@ jobs:
           
           meson setup builddir32 \
             --cross-file armhf-cross.ini \
-            --libdir=lib/arm-linux-gnueabihf \
-            -Dprefix=/opt/mesa \
+            --libdir=lib32 \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
             -Doptimization=3 \
             -Dplatforms=x11 \
@@ -221,8 +221,8 @@ jobs:
           cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C /opt mesa
+          TAR_NAME="termux-mesa-${VERSION}-glibc.tar.gz"
+          tar -czvf "../${TAR_NAME}" -C /data/data/com.termux/files/usr glibc
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
