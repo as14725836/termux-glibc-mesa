@@ -97,7 +97,6 @@ jobs:
           cd mesa
           git apply --verbose ../full_fixed_710_720-1.patch
           git apply --verbose ../0003-fix-for-anon-file.patch
-          git apply --verbose ../perfect_fix.patch
           git apply --verbose ../0018-disable-general-layout-in-zink-for-turnip.patch
           echo "✅ 补丁应用完成"
       
