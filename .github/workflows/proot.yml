@@ -67,20 +67,21 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git
-          cd mesa-kgsl-25.2.5
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
+          cd mesa
+          git checkout test/adreno-gen8
       
       - name: 自定义品牌
         run: |
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
-          cd mesa-kgsl-25.2.5
+          cd mesa
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
       
       - name: 构建 Mesa
         run: |
-          cd mesa-kgsl-25.2.5
+          cd mesa
           BUILD_START=$(date +%s)
           sudo mkdir -p /opt/mesa
           sudo chmod 777 -R /opt
@@ -137,7 +138,7 @@ jobs:
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
-          cd mesa-kgsl-25.2.5
+          cd mesa
           PACK_START=$(date +%s)
           
           TAR_NAME="proot-mesa-${VERSION}-aarch64.tar.gz"
