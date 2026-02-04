@@ -121,7 +121,6 @@ jobs:
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir -j$(nproc)
