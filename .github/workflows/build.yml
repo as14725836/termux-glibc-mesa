@@ -99,8 +99,6 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
@@ -125,7 +123,7 @@ jobs:
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno,swrast \
-            -Dfreedreno-kmds=msm,kgsl \
+            -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dmediafoundation-codecs=all \
             -Dgbm=enabled \
