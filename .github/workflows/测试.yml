@@ -76,7 +76,7 @@ jobs:
 
       - name: Apply specific patch
         run: |
-          git apply ../full_fixed_710_720-1.patch
+          git apply ./full_fixed_710_720-1.patch
           echo "✅ Applied patch: $PATCH_FILE"
 
       
