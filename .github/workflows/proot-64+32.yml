@@ -176,7 +176,6 @@ jobs:
             --libdir=lib/arm-linux-gnueabihf \
             -Dprefix=/opt/mesa \
             -Dbuildtype=release \
-            -Doptimization=3 \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
@@ -198,7 +197,6 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Dgbm=enabled \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir32 -j$(nproc)
