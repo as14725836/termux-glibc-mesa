@@ -79,7 +79,7 @@ jobs:
           PATCH_FILE="full_fixed_710_720-1.patch"
           git apply --check "$PATCH_FILE"
           git apply "$PATCH_FILE"
-       echo "✅ Applied patch: $PATCH_FILE"
+          echo "✅ Applied patch: $PATCH_FILE"
 
       
       - name: 自定义品牌
