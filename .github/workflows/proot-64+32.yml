@@ -112,8 +112,6 @@ jobs:
             --libdir=lib/aarch64-linux-gnu \
             -Dprefix=/opt/mesa \
             -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
             -Dplatforms=x11,wayland \
             -Degl-native-platform=wayland \
             -Dglx=dri \
@@ -137,12 +135,11 @@ jobs:
             -Dgallium-drivers=zink,freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno \
-            -Dfreedreno-kmds=msm,kgsl \
+            -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir64 -j$(nproc)
