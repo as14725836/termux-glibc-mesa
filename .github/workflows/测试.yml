@@ -67,9 +67,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/whitebelyash/mesa-tu8.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout gen8
+          git checkout adreno-main
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
@@ -125,7 +125,6 @@ jobs:
             -Dvideo-codecs=all \
             -Dgbm=enabled \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir -j$(nproc)
