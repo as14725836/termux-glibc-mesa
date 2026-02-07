@@ -74,6 +74,18 @@ jobs:
           git branch -v
           git log -1 --oneline --decorate
 
+      - name: Apply specific patch
+        run: |
+          PATCH_FILE="full_fixed_710_720-1.patch"
+          
+          # 预检查：确保补丁能干净应用
+          git apply --check "$PATCH_FILE"
+          
+          # 应用补丁
+          git apply "$PATCH_FILE"
+          
+          echo "✅ Applied patch: $PATCH_FILE"
+
       
       - name: 自定义品牌
         run: |
