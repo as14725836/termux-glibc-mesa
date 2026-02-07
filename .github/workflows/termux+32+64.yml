@@ -120,8 +120,6 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Doptimization=3 \
-            -Db_lto=true \
             -Dplatforms=x11,wayland \
             -Degl-native-platform=wayland \
             -Dglx=dri \
@@ -145,12 +143,11 @@ jobs:
             -Dgallium-drivers=zink,freedreno \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno \
-            -Dfreedreno-kmds=msm,kgsl \
+            -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dgbm=enabled \
             -Dtools=drm-shim,freedreno \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir64 -j$(nproc)
@@ -187,7 +184,6 @@ jobs:
             --libdir=lib32 \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Doptimization=3 \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
             -Dglx=dri \
@@ -209,7 +205,6 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Dgbm=enabled \
             -Db_ndebug=true \
-            -Db_lto=true \
             -Dstrip=true
           
           ninja -C builddir32 -j$(nproc)
