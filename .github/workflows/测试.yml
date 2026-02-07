@@ -76,7 +76,8 @@ jobs:
 
       - name: Apply specific patch
         run: |
-          git apply --directory=../ ./full_fixed_710_720-1.patch
+          cd mesa
+          git apply full_fixed_710_720-1.patch
           echo "✅ Applied patch: $PATCH_FILE"
 
       
