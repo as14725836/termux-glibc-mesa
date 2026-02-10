@@ -67,19 +67,12 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/CreativeCylon/mesa.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout dev/Use_raw_copy_on_a7xx
+          git checkout adreno-main
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
-
-      - name: Apply specific patch
-        run: |
-          cd mesa
-          git apply -p1 ../full_fixed_710_720.patch
-          echo "✅ Applied patch: $PATCH_FILE"
-
       
       - name: 自定义品牌
         run: |
