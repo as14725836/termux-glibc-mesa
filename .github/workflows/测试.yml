@@ -73,6 +73,11 @@ jobs:
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
+
+      - name: 应用补丁
+        run: |
+           cd mesa
+           git apply -p1 ../R8_G8B8_420_UNORM.patch
       
       - name: 自定义品牌
         run: |
