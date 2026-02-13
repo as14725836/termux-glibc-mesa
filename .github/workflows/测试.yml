@@ -67,9 +67,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
+          git clone https://gitlab.freedesktop.org/cwabbott0/mesa.git mesa
           cd mesa
-          git checkout adreno-main
+          git checkout review/tu-subsampled-images
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
