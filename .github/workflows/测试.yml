@@ -78,7 +78,6 @@ jobs:
         run: |
            cd mesa
            git apply -p1 ../R8_G8B8_420_UNORM.patch
-           git apply -p1 ../final_adjusted_patch.diff
            git status
       
       - name: 自定义品牌
