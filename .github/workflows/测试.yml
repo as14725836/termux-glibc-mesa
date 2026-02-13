@@ -78,10 +78,7 @@ jobs:
         run: |
            cd mesa
            git apply -p1 ../R8_G8B8_420_UNORM.patch
-           git apply -p1 ../adreno740_performance_patch_v2.diff
-           git apply -p1 ../comprehensive_adreno740_optimization.diff
            git apply -p1 ../final_adjusted_patch.diff
-           git apply -p1 ../performance_optimized_patch.diff
            git status
       
       - name: 自定义品牌
