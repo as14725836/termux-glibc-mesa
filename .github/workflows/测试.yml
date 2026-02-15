@@ -67,9 +67,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://gitlab.freedesktop.org/cwabbott0/mesa.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout review/tu-subsampled-images
+          git checkout adreno-main
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
@@ -120,10 +120,10 @@ jobs:
             -Dmicrosoft-clc=disabled \
             -Dgallium-rusticl=false \
             -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
+            -Dgallium-drivers=zink,freedreno,virgl,llvmpipe,softpipe \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast \
+            -Dvulkan-drivers=freedreno,swrast,virtio \
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dgbm=enabled \
