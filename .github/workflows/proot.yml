@@ -3,15 +3,10 @@ on:
   workflow_dispatch:
     inputs:
       mesa_version:
-        description: 'Mesa 版本号 (留空则使用最新main分支，例如: 24.3.4, 25.0.0-rc1)'
+        description: 'Mesa 版本号 (留空则使用最新main分支，例如: 25.1.2, mesa-25.1.2, 24.3.4)'
         required: false
         type: string
         default: ''
-      use_tag:
-        description: '是否使用Tag版本 (是: 使用release tag, 否: 使用main分支)'
-        required: false
-        type: boolean
-        default: false
   push:
     branches:
       - main
@@ -35,17 +30,25 @@ jobs:
         run: |
           # 检查是否为手动触发并指定了版本
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ inputs.mesa_version }}" ]; then
-            if [ "${{ inputs.use_tag }}" == "true" ]; then
-              MESA_REF="${{ inputs.mesa_version }}"
-              echo "mesa_ref=$MESA_REF" >> $GITHUB_OUTPUT
-              echo "mesa_version=$MESA_REF" >> $GITHUB_OUTPUT
-              echo "使用指定的 Tag 版本: $MESA_REF"
+            USER_VERSION="${{ inputs.mesa_version }}"
+            
+            # 自动处理版本号格式
+            # 如果输入的是纯版本号（如 25.1.2），自动添加 mesa- 前缀
+            if [[ "$USER_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+              # 检查是否已经有 mesa- 前缀
+              if [[ ! "$USER_VERSION" =~ ^mesa- ]]; then
+                MESA_REF="mesa-$USER_VERSION"
+                echo "自动添加 mesa- 前缀: $USER_VERSION -> $MESA_REF"
+              else
+                MESA_REF="$USER_VERSION"
+              fi
             else
-              MESA_REF="${{ inputs.mesa_version }}"
-              echo "mesa_ref=$MESA_REF" >> $GITHUB_OUTPUT
-              echo "mesa_version=$MESA_REF" >> $GITHUB_OUTPUT
-              echo "使用指定的分支/提交: $MESA_REF"
+              MESA_REF="$USER_VERSION"
             fi
+            
+            echo "mesa_ref=$MESA_REF" >> $GITHUB_OUTPUT
+            echo "mesa_version=$USER_VERSION" >> $GITHUB_OUTPUT
+            echo "使用指定的版本: $USER_VERSION -> $MESA_REF"
           else
             # 自动模式：使用 main 分支最新提交
             echo "mesa_ref=main" >> $GITHUB_OUTPUT
@@ -116,34 +119,105 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           MESA_REF="${{ needs.check-updates.outputs.mesa_ref }}"
           
-          if [ -z "$MESA_REF" ] || [ "$MESA_REF" == "main" ]; then
-            # 克隆 main 分支
-            git clone https://gitlab.freedesktop.org/mesa/mesa.git mesa
-            cd mesa
-            echo "使用 main 分支最新代码"
+          echo "目标引用: $MESA_REF"
+          
+          # 创建临时目录测试引用类型
+          mkdir -p /tmp/mesa-test
+          cd /tmp/mesa-test
+          git init
+          git remote add origin https://gitlab.freedesktop.org/mesa/mesa.git
+          git fetch --depth=1 origin 2>/dev/null
+          
+          REF_TYPE="unknown"
+          ACTUAL_REF=""
+          
+          # 检查是否为 tag
+          if git ls-remote --tags origin | grep -q "refs/tags/$MESA_REF$"; then
+            REF_TYPE="tag"
+            ACTUAL_REF="$MESA_REF"
+            echo "✅ 检测到 Tag: $MESA_REF"
+          # 检查是否为分支
+          elif git ls-remote --heads origin | grep -q "refs/heads/$MESA_REF$"; then
+            REF_TYPE="branch"
+            ACTUAL_REF="$MESA_REF"
+            echo "✅ 检测到分支: $MESA_REF"
+          # 检查是否为 commit hash (7-40位十六进制)
+          elif [[ "$MESA_REF" =~ ^[0-9a-f]{7,40}$ ]]; then
+            REF_TYPE="commit"
+            ACTUAL_REF="$MESA_REF"
+            echo "✅ 检测到 Commit: $MESA_REF"
           else
-            # 克隆指定版本/tag/分支
-            git clone --branch "$MESA_REF" --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa || \
-            git clone --branch "$MESA_REF" https://gitlab.freedesktop.org/mesa/mesa.git mesa
-            cd mesa
-            # 如果是 commit hash，需要获取完整历史
-            if [ ${#MESA_REF} -eq 40 ] || [ ${#MESA_REF} -eq 7 ]; then
-              git fetch --depth=100 origin main
-              git checkout $MESA_REF
+            echo "⚠️ 未找到 $MESA_REF，尝试查找相近的 tag..."
+            # 尝试查找包含该字符串的 tag
+            MATCHING_TAG=$(git ls-remote --tags origin | grep "$MESA_REF" | head -1 | awk -F'refs/tags/' '{print $2}' | sed 's/\^{}//')
+            if [ -n "$MATCHING_TAG" ]; then
+              REF_TYPE="tag"
+              ACTUAL_REF="$MATCHING_TAG"
+              echo "✅ 找到匹配的 Tag: $ACTUAL_REF"
+            else
+              echo "❌ 无法识别引用: $MESA_REF"
+              echo ""
+              echo "最近的 Mesa 版本:"
+              git ls-remote --tags origin | grep -E 'refs/tags/mesa-[0-9]+\.[0-9]+\.[0-9]+$' | tail -10 | awk -F'refs/tags/' '{print "  - " $2}'
+              exit 1
             fi
-            echo "使用指定版本: $MESA_REF"
           fi
+          
+          cd "$GITHUB_WORKSPACE"
+          
+          # 根据类型克隆
+          case "$REF_TYPE" in
+            "tag")
+              echo "📌 克隆 Tag: $ACTUAL_REF"
+              git clone --branch "$ACTUAL_REF" --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa 2>&1 || {
+                echo "深度克隆失败，尝试完整克隆..."
+                git clone https://gitlab.freedesktop.org/mesa/mesa.git mesa
+                cd mesa
+                git checkout "tags/$ACTUAL_REF"
+                cd ..
+              }
+              ;;
+            "branch")
+              echo "🌿 克隆分支: $ACTUAL_REF"
+              git clone --branch "$ACTUAL_REF" --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa
+              ;;
+            "commit")
+              echo "🔖 克隆 Commit: $ACTUAL_REF"
+              git clone --depth 100 https://gitlab.freedesktop.org/mesa/mesa.git mesa
+              cd mesa
+              git fetch --depth=100 origin
+              git checkout "$ACTUAL_REF"
+              cd ..
+              ;;
+            *)
+              echo "📖 使用 main 分支"
+              git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa
+              ;;
+          esac
+          
+          # 验证克隆结果
+          if [ ! -d "mesa" ]; then
+            echo "❌ 克隆失败"
+            exit 1
+          fi
+          
+          cd mesa
           
           # 获取版本信息
           if [ -f "VERSION" ]; then
             VERSION=$(cat VERSION)
           else
-            VERSION=$(git describe --tags --always 2>/dev/null || echo "custom")
+            VERSION=$(git describe --tags --always 2>/dev/null | sed 's/^mesa-//' || echo "custom")
           fi
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
-          echo "MESA_REF=${MESA_REF}" >> $GITHUB_ENV
+          echo "MESA_REF=${ACTUAL_REF:-$MESA_REF}" >> $GITHUB_ENV
+          
+          echo "✅ 克隆完成"
+          echo "版本: $VERSION"
+          echo "提交: $GIT_HASH"
+          echo "引用: ${ACTUAL_REF:-$MESA_REF}"
       
       - name: 自定义品牌
         run: |
@@ -222,13 +296,15 @@ jobs:
           
           # 只打包 vulkan 驱动
           if [ -f "builddir/src/freedreno/vulkan/libvulkan_freedreno.so" ]; then
-            tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+            tar -czf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+            echo "✅ 打包 Vulkan 驱动: ${TAR_NAME}"
           else
             echo "⚠️ 未找到 libvulkan_freedreno.so"
           fi
           
           # 打包完整目录
-          tar -czvf "../${FULL_TAR}" -C /opt mesa
+          tar -czf "../${FULL_TAR}" -C /opt mesa
+          echo "✅ 打包完整 Mesa: ${FULL_TAR}"
           
           cd ..
           [ -f "${TAR_NAME}" ] && sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
@@ -251,7 +327,7 @@ jobs:
             ${{ env.FULL_TAR }}.sha256
           retention-days: 7
       
-      - name: 创建 GitHub Release (仅 tag 推送或手动指定版本)
+      - name: 创建 GitHub Release (仅手动构建或 tag 推送)
         if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.mesa_version != '') }}
         uses: softprops/action-gh-release@v1
         with:
@@ -264,12 +340,17 @@ jobs:
             - 架构: aarch64
             - 包含驱动: freedreno (Turnip Vulkan), zink (OpenGL)
             
-            ### 安装说明
+            ### 使用方法
             ```bash
-            # 解压到 proot 容器
+            # 1. 解压到 proot 容器
             tar -xzf proot-mesa-full-*.tar.gz -C /
+            
+            # 2. 设置环境变量
             export LD_LIBRARY_PATH=/opt/mesa/lib:\$LD_LIBRARY_PATH
             export VK_ICD_FILENAMES=/opt/mesa/share/vulkan/icd.d/freedreno_icd.arm64.json
+            
+            # 3. 验证安装
+            vulkaninfo --summary
             ```
           files: |
             ${{ env.TAR_NAME }}
@@ -292,7 +373,7 @@ jobs:
       - name: 输出总结信息
         run: |
           echo "=========================================="
-          echo "构建完成！"
+          echo "✅ 构建完成！"
           echo "Mesa 版本: ${{ env.VERSION }}"
           echo "Git 提交: ${{ env.GIT_HASH }}"
           echo "源码来源: ${{ needs.check-updates.outputs.mesa_ref }}"
