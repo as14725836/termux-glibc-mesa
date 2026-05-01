@@ -1,6 +1,17 @@
 name: proot Mesa (aarch64, Auto Update + Detailed Log)
 on:
   workflow_dispatch:
+    inputs:
+      mesa_version:
+        description: 'Mesa 版本号 (留空则使用最新main分支，例如: 24.3.4, 25.0.0-rc1)'
+        required: false
+        type: string
+        default: ''
+      use_tag:
+        description: '是否使用Tag版本 (是: 使用release tag, 否: 使用main分支)'
+        required: false
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -16,9 +27,35 @@ jobs:
     outputs:
       new_commit: ${{ steps.check.outputs.new_commit }}
       latest_hash: ${{ steps.check.outputs.latest_hash }}
+      mesa_version: ${{ steps.version.outputs.mesa_version }}
+      mesa_ref: ${{ steps.version.outputs.mesa_ref }}
     steps:
+      - name: 确定 Mesa 源码版本/分支
+        id: version
+        run: |
+          # 检查是否为手动触发并指定了版本
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ -n "${{ inputs.mesa_version }}" ]; then
+            if [ "${{ inputs.use_tag }}" == "true" ]; then
+              MESA_REF="${{ inputs.mesa_version }}"
+              echo "mesa_ref=$MESA_REF" >> $GITHUB_OUTPUT
+              echo "mesa_version=$MESA_REF" >> $GITHUB_OUTPUT
+              echo "使用指定的 Tag 版本: $MESA_REF"
+            else
+              MESA_REF="${{ inputs.mesa_version }}"
+              echo "mesa_ref=$MESA_REF" >> $GITHUB_OUTPUT
+              echo "mesa_version=$MESA_REF" >> $GITHUB_OUTPUT
+              echo "使用指定的分支/提交: $MESA_REF"
+            fi
+          else
+            # 自动模式：使用 main 分支最新提交
+            echo "mesa_ref=main" >> $GITHUB_OUTPUT
+            echo "mesa_version=auto-main" >> $GITHUB_OUTPUT
+            echo "使用自动模式: main 分支"
+          fi
+      
       - name: 检查 Mesa 上游更新
         id: check
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.mesa_version == '' }}
         run: |
           echo "🔍 检查 Mesa 上游提交..."
           LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
@@ -38,9 +75,19 @@ jobs:
           else
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
+      
+      - name: 手动模式跳过更新检查
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mesa_version != '' }}
+        run: |
+          echo "manual_build=true" >> $GITHUB_OUTPUT
+          echo "手动构建模式，跳过自动更新检测"
+
   build:
     needs: check-updates
-    if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    if: |
+      needs.check-updates.outputs.new_commit == 'true' || 
+      github.event_name == 'workflow_dispatch' || 
+      github.event_name == 'push'
     runs-on: ubuntu-24.04-arm
     steps:
       - name: 检出仓库
@@ -64,20 +111,53 @@ jobs:
             libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
       
-      - name: 克隆 Mesa 正式版
+      - name: 克隆 Mesa 源码
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
-          cd mesa
-          git checkout test/adreno-gen8
+          MESA_REF="${{ needs.check-updates.outputs.mesa_ref }}"
+          
+          if [ -z "$MESA_REF" ] || [ "$MESA_REF" == "main" ]; then
+            # 克隆 main 分支
+            git clone https://gitlab.freedesktop.org/mesa/mesa.git mesa
+            cd mesa
+            echo "使用 main 分支最新代码"
+          else
+            # 克隆指定版本/tag/分支
+            git clone --branch "$MESA_REF" --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa || \
+            git clone --branch "$MESA_REF" https://gitlab.freedesktop.org/mesa/mesa.git mesa
+            cd mesa
+            # 如果是 commit hash，需要获取完整历史
+            if [ ${#MESA_REF} -eq 40 ] || [ ${#MESA_REF} -eq 7 ]; then
+              git fetch --depth=100 origin main
+              git checkout $MESA_REF
+            fi
+            echo "使用指定版本: $MESA_REF"
+          fi
+          
+          # 获取版本信息
+          if [ -f "VERSION" ]; then
+            VERSION=$(cat VERSION)
+          else
+            VERSION=$(git describe --tags --always 2>/dev/null || echo "custom")
+          fi
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+          echo "MESA_REF=${MESA_REF}" >> $GITHUB_ENV
       
       - name: 自定义品牌
         run: |
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           cd mesa
-          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
-          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+          # 检查文件是否存在（不同版本路径可能不同）
+          if [ -f "src/freedreno/vulkan/tu_device.cc" ]; then
+            sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+            sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
+            sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+            echo "品牌自定义完成"
+          else
+            echo "⚠️ 品牌文件不存在，跳过自定义"
+          fi
       
       - name: 构建 Mesa
         run: |
@@ -126,11 +206,6 @@ jobs:
           
           BUILD_END=$(date +%s)
           echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
-          
-          VERSION=$(cat VERSION)
-          GIT_HASH=$(git rev-parse --short HEAD)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
       
       - name: 打包构建产物
         run: |
@@ -138,15 +213,26 @@ jobs:
           cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="proot-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+          # 清理版本号中的特殊字符
+          SAFE_VERSION=$(echo "${{ env.VERSION }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
+          SAFE_HASH=$(echo "${{ env.GIT_HASH }}" | sed 's/[^a-zA-Z0-9._-]/_/g')
           
-          FULL_TAR="proot-mesa-${VERSION}-aarch64.tar.gz"
+          TAR_NAME="proot-mesa-${SAFE_VERSION}-${SAFE_HASH}-aarch64.tar.gz"
+          FULL_TAR="proot-mesa-full-${SAFE_VERSION}-${SAFE_HASH}-aarch64.tar.gz"
+          
+          # 只打包 vulkan 驱动
+          if [ -f "builddir/src/freedreno/vulkan/libvulkan_freedreno.so" ]; then
+            tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+          else
+            echo "⚠️ 未找到 libvulkan_freedreno.so"
+          fi
+          
+          # 打包完整目录
           tar -czvf "../${FULL_TAR}" -C /opt mesa
           
           cd ..
-          sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
-          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
+          [ -f "${TAR_NAME}" ] && sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
+          [ -f "${FULL_TAR}" ] && sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
@@ -157,15 +243,44 @@ jobs:
       - name: 上传构建产物到 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mesa-artifacts-${{ env.VERSION }}-aarch64
+          name: mesa-artifacts-${{ env.VERSION }}-${{ env.GIT_HASH }}-aarch64
           path: |
             ${{ env.TAR_NAME }}
             ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
+          retention-days: 7
       
-      - name: 保存最新提交记录
-        if: ${{ needs.check-updates.outputs.latest_hash != '' }}
+      - name: 创建 GitHub Release (仅 tag 推送或手动指定版本)
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.mesa_version != '') }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: mesa-${{ env.VERSION }}-${{ env.GIT_HASH }}
+          name: "Mesa ${{ env.VERSION }} (${{ env.GIT_HASH }}) for aarch64"
+          body: |
+            ## Mesa 构建版本: ${{ env.VERSION }}
+            - Git 提交: ${{ env.GIT_HASH }}
+            - 构建时间: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            - 架构: aarch64
+            - 包含驱动: freedreno (Turnip Vulkan), zink (OpenGL)
+            
+            ### 安装说明
+            ```bash
+            # 解压到 proot 容器
+            tar -xzf proot-mesa-full-*.tar.gz -C /
+            export LD_LIBRARY_PATH=/opt/mesa/lib:\$LD_LIBRARY_PATH
+            export VK_ICD_FILENAMES=/opt/mesa/share/vulkan/icd.d/freedreno_icd.arm64.json
+            ```
+          files: |
+            ${{ env.TAR_NAME }}
+            ${{ env.FULL_TAR }}
+            ${{ env.TAR_NAME }}.sha256
+            ${{ env.FULL_TAR }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 保存最新提交记录 (仅自动模式)
+        if: ${{ needs.check-updates.outputs.latest_hash != '' && github.event_name != 'workflow_dispatch' }}
         run: |
           echo "${{ needs.check-updates.outputs.latest_hash }}" > .mesa_latest_commit
           git config --global user.name "github-actions[bot]"
@@ -176,9 +291,12 @@ jobs:
       
       - name: 输出总结信息
         run: |
-          echo "构建完成"
-          echo "版本: ${{ env.VERSION }}"
-          echo "提交: ${{ env.GIT_HASH }}"
+          echo "=========================================="
+          echo "构建完成！"
+          echo "Mesa 版本: ${{ env.VERSION }}"
+          echo "Git 提交: ${{ env.GIT_HASH }}"
+          echo "源码来源: ${{ needs.check-updates.outputs.mesa_ref }}"
           echo "构建产物已保存到 Artifacts"
           echo "- ${{ env.TAR_NAME }}"
           echo "- ${{ env.FULL_TAR }}"
+          echo "=========================================="
