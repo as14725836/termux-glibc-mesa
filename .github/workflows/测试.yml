@@ -82,7 +82,7 @@ jobs:
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-      
+          sed -i '/A8XX_SP_UNKNOWN_A9A8/s/^/# /' src/freedreno/common/freedreno_devices.py
       - name: 构建 Mesa
         run: |
           cd mesa
