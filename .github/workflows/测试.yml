@@ -69,7 +69,7 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/DiskDVD/A8XX-Y.git mesa
           cd mesa
-          git checkout dev/A8XX
+          git checkout A8XX
           git pull
           echo "🧾 当前分支和提交:"
           git branch -v
