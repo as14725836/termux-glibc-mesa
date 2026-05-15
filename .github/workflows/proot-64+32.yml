@@ -140,7 +140,6 @@ jobs:
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dgbm=enabled \
-            -Dtools=drm-shim,freedreno \
             -Db_ndebug=true \
             -Dstrip=true
           
