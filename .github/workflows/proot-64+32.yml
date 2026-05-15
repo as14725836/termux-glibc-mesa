@@ -88,8 +88,10 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/fish4terrisa-MSDSM/mesa-kgsl-25.2.5.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
+          git checkout dev/adreno-main
+          git pull
       
       - name: 自定义品牌
         run: |
