@@ -1,6 +1,15 @@
 name: proot 64+32 Mesa (aarch64 + armhf, Auto Update + Detailed Log)
 on:
   workflow_dispatch:
+    inputs:
+      build_32bit:
+        description: '是否构建32位版本'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   push:
     branches:
       - main
@@ -38,6 +47,7 @@ jobs:
           else
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
+  
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
@@ -66,6 +76,7 @@ jobs:
           pip3 install --user meson ninja mako
       
       - name: 添加armhf架构支持并安装32位依赖
+        if: ${{ github.event.inputs.build_32bit == 'true' || github.event_name != 'workflow_dispatch' }}
         run: |
           echo "🔄 添加armhf架构支持..."
           sudo dpkg --add-architecture armhf
@@ -115,31 +126,33 @@ jobs:
             -Dprefix=/opt/mesa \
             -Dbuildtype=release \
             -Dplatforms=x11,wayland \
-            -Degl-native-platform=wayland \
+            -Degl-native-platform=x11 \
             -Dglx=dri \
-            -Dglx-direct=true \
             -Dopengl=true \
-            -Dgles1=enabled \
+            -Dgles1=disabled \
             -Dgles2=enabled \
-            -Dglvnd=disabled \
+            -Dglvnd=enabled \
             -Degl=enabled \
             -Dllvm=disabled \
             -Dshared-llvm=disabled \
             -Dshader-cache=enabled \
             -Dshared-glapi=enabled \
-            -Dxlib-lease=enabled \
-            -Dvulkan-beta=true \
+            -Dxlib-lease=disabled \
             -Dlibunwind=disabled \
             -Dvalgrind=disabled \
+            -Dintel-rt=disabled \
             -Dmicrosoft-clc=disabled \
             -Dgallium-rusticl=false \
-            -Dgallium-extra-hud=true \
+            -Dbuild-tests=false \
+            -Dlmsensors=disabled \
             -Dgallium-drivers=zink,freedreno \
+            -Dgallium-mediafoundation=disabled \
             -Dshader-cache-default=true \
             -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
-            -Dgbm=enabled \
+            -Dandroid-libbacktrace=disabled \
+            -Dgbm=disabled \
             -Db_ndebug=true \
             -Dstrip=true
           
@@ -150,6 +163,7 @@ jobs:
           echo "64位构建耗时: $((BUILD_END - BUILD_START)) 秒"
       
       - name: 构建32位Mesa
+        if: ${{ github.event.inputs.build_32bit == 'true' || github.event_name != 'workflow_dispatch' }}
         run: |
           cd mesa
           BUILD_START=$(date +%s)
@@ -211,14 +225,29 @@ jobs:
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
       
+      - name: 获取版本信息
+        run: |
+          cd mesa
+          VERSION=$(cat VERSION)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+      
       - name: 打包构建产物
         run: |
           echo "📦 开始打包Mesa产物..."
-          cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C /opt mesa
+          # 根据是否构建32位决定文件名
+          if [ "${{ github.event.inputs.build_32bit }}" == "true" ] || [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            TAR_NAME="proot-mesa-${VERSION}-multiarch.tar.gz"
+            echo "✅ 打包多架构版本 (64+32位)"
+          else
+            TAR_NAME="proot-mesa-${VERSION}-arm64.tar.gz"
+            echo "✅ 打包仅64位版本"
+          fi
+          
+          tar -czvf "${TAR_NAME}" -C /opt mesa
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
@@ -228,5 +257,5 @@ jobs:
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: mesa-proot-64+32
+          name: mesa-proot-${{ github.event.inputs.build_32bit == 'true' && '64+32' || '64-only' }}
           path: ${{ env.ARTIFACT_NAME }}
