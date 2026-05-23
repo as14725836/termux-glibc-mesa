@@ -1,115 +1,188 @@
-name: Mesa Upstream Watcher
-
+name: 测试版 Mesa (aarch64, Auto Update + Detailed Log)
 on:
-  schedule:
-    - cron: '0 * * * *' # Every hour
   workflow_dispatch:
-
+  push:
+    branches:
+      - main
+      - 'refs/tags/**'
+  schedule:
+    - cron: "0 22 * * *"
 permissions:
   contents: write
   actions: write
-
 jobs:
-  check-upstream:
-    runs-on: ubuntu-24.04-arm  # 改为 ARM64 架构
+  check-updates:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      new_commit: ${{ steps.check.outputs.new_commit }}
+      latest_hash: ${{ steps.check.outputs.latest_hash }}
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Check Mesa main for new commits
+      - name: 检查 Mesa 上游更新
         id: check
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          HASH_FILE="mesa_hash.txt"
-          touch "$HASH_FILE"
-
-          MESA_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa HEAD | awk '{print $1}')
-          OLD_HASH=$(cat "$HASH_FILE" 2>/dev/null || echo "")
-
-          echo "Current:  ${MESA_HASH:0:7}"
-          echo "Previous: ${OLD_HASH:0:7}"
-
-          if [ -z "$MESA_HASH" ]; then
-            echo "WARNING: could not fetch mesa/mesa HEAD"
-            echo "changed=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          if [ -n "$OLD_HASH" ] && [ "$MESA_HASH" != "$OLD_HASH" ]; then
-            echo "Mesa main changed: ${OLD_HASH:0:7} -> ${MESA_HASH:0:7}"
-            echo "changed=true" >> $GITHUB_OUTPUT
-          elif [ -z "$OLD_HASH" ]; then
-            echo "First run -- recording hash, no build triggered"
-            echo "changed=false" >> $GITHUB_OUTPUT
+          echo "🔍 检查 Mesa 上游提交..."
+          LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
+          echo "最新上游提交: $LATEST_HASH"
+          
+          STATE_FILE=".mesa_latest_commit"
+          if [ -f "$STATE_FILE" ]; then
+            LAST_HASH=$(cat $STATE_FILE)
           else
-            echo "No change."
-            echo "changed=false" >> $GITHUB_OUTPUT
+            LAST_HASH=""
           fi
-
-          echo "$MESA_HASH" > "$HASH_FILE"
-
-      - name: Check StevenMXZ for new release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          LAST_FILE="steven_last_tag.txt"
-          touch "$LAST_FILE"
-          LAST_TAG=$(cat "$LAST_FILE" 2>/dev/null || echo "")
-
-          STEVEN_TAG=$(gh release list --repo StevenMXZ/Adreno-Tools-Drivers --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
-          if [ -z "$STEVEN_TAG" ]; then
-            echo "Could not fetch StevenMXZ releases"
-            exit 0
-          fi
-
-          echo "Steven latest: $STEVEN_TAG (last seen: ${LAST_TAG:-none})"
-
-          if [ "$STEVEN_TAG" = "$LAST_TAG" ]; then
-            echo "No new Steven release."
-            exit 0
-          fi
-
-          STEVEN_BODY=$(gh release view "$STEVEN_TAG" --repo StevenMXZ/Adreno-Tools-Drivers --json body --jq '.body' 2>/dev/null || echo "")
-          STEVEN_URL="https://github.com/StevenMXZ/Adreno-Tools-Drivers/releases/tag/$STEVEN_TAG"
-
-          STEVEN_COMMIT=$(echo "$STEVEN_BODY" | grep -oP 'mesa/-/commit/\K[a-f0-9]{7,40}' | head -1)
-          if [ -z "$STEVEN_COMMIT" ]; then
-            echo "Could not extract commit hash from Steven's release body"
+          echo "上次构建: $LAST_HASH"
+          
+          if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
+            echo "new_commit=true" >> $GITHUB_OUTPUT
+            echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
           else
-            echo "Steven's Mesa commit: $STEVEN_COMMIT"
-
-            OUR_TAGS=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName --jq '.[].tagName')
-            for tag in $OUR_TAGS; do
-              BODY=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq '.body')
-              if echo "$BODY" | grep -qi "$STEVEN_COMMIT"; then
-                echo "Match: our release $tag shares commit $STEVEN_COMMIT with Steven's $STEVEN_TAG"
-                if echo "$BODY" | grep -q "StevenMXZ"; then
-                  echo "Note already present, skipping"
-                else
-                  printf '> ℹ️ **Same Mesa commit as [StevenMXZ %s](%s)**\n\n---\n\n%s' \
-                    "$STEVEN_TAG" "$STEVEN_URL" "$BODY" > /tmp/updated_body.md
-                  gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file /tmp/updated_body.md
-                  echo "Updated release $tag with Steven match note"
-                fi
-                break
-              fi
-            done
+            echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
-
-          echo "$STEVEN_TAG" > "$LAST_FILE"
-
-      - name: Commit updated tracking files
+  build:
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      
+      - name: 显示构建环境信息
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add mesa_hash.txt steven_last_tag.txt
-          git diff --staged --quiet || git commit -m "chore: update tracked hashes"
-          git push
-
-      - name: Trigger Turnip Build
-        if: steps.check.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          lsb_release -a || true
+          uname -a
+          lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
+          free -h
+          df -h
+      
+      - name: 安装依赖
         run: |
-          gh workflow run "Build Turnip (Combined)"
+          sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt update
+          sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
+            libxext-dev llvm-19 libx11-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
+            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
+            libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
+          pip3 install --user meson ninja mako
+      
+      - name: 克隆 Mesa 正式版
+        run: |
+          echo "📥 克隆 Mesa 仓库..."
+          git clone https://github.com/whitebelyash/mesa-unified.git mesa
+          cd mesa
+          git checkout turnip/gen8
+          git pull
+          echo "🧾 当前分支和提交:"
+          git branch -v
+          git log -1 --oneline --decorate
+          
+      - name: 自定义品牌
+        run: |
+          echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
+          cd mesa
+          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+          #sed -i '/A8XX_SP_UNKNOWN_A9A8/s/^/# /' src/freedreno/common/freedreno_devices.py
+      - name: 构建 Mesa
+        run: |
+          cd mesa
+          BUILD_START=$(date +%s)
+          sudo mkdir -p /data/data/com.termux/files/usr/glibc
+          sudo chmod 777 -R /data
+          
+          mkdir -p builddir
+          meson setup builddir \
+            --libdir=lib \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
+            -Dbuildtype=release \
+            -Dplatforms=x11 \
+            -Degl-native-platform=x11 \
+            -Dglx=dri \
+            -Dglx-direct=true \
+            -Dopengl=true \
+            -Dgles1=enabled \
+            -Dgles2=enabled \
+            -Dglvnd=disabled \
+            -Degl=enabled \
+            -Dllvm=enabled \
+            -Dshared-llvm=enabled \
+            -Dshader-cache=enabled \
+            -Dshared-glapi=enabled \
+            -Dxlib-lease=enabled \
+            -Dvulkan-beta=true \
+            -Dlibunwind=disabled \
+            -Dvalgrind=disabled \
+            -Dmicrosoft-clc=disabled \
+            -Dgallium-rusticl=false \
+            -Dgallium-extra-hud=true \
+            -Dgallium-drivers=zink,freedreno,virgl,llvmpipe,softpipe \
+            -Dgallium-rusticl-enable-drivers=freedreno \
+            -Dshader-cache-default=true \
+            -Dvulkan-drivers=freedreno,swrast,virtio \
+            -Dfreedreno-kmds=kgsl \
+            -Dvideo-codecs=all \
+            -Dgbm=enabled \
+            -Db_ndebug=true \
+            -Dstrip=true
+          
+          ninja -C builddir -j$(nproc)
+          ninja -C builddir install
+          
+          BUILD_END=$(date +%s)
+          echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
+          
+          VERSION=$(cat VERSION)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+      
+      - name: 打包构建产物
+        run: |
+          echo "📦 开始打包 Mesa 产物..."
+          cd mesa
+          PACK_START=$(date +%s)
+          
+          TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
+          
+          FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
+          
+          cd ..
+          sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
+          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
+          
+          PACK_END=$(date +%s)
+          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+          
+          echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
+          echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
+      
+      - name: 上传构建产物到 Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mesa-artifacts-${{ env.VERSION }}-aarch64
+          path: |
+            ${{ env.TAR_NAME }}
+            ${{ env.FULL_TAR }}
+            ${{ env.TAR_NAME }}.sha256
+            ${{ env.FULL_TAR }}.sha256
+      
+      - name: 保存最新提交记录
+        if: ${{ needs.check-updates.outputs.latest_hash != '' }}
+        run: |
+          echo "${{ needs.check-updates.outputs.latest_hash }}" > .mesa_latest_commit
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .mesa_latest_commit || true
+          git commit -m "Update Mesa commit record" || true
+          git push || true
+      
+      - name: 输出总结信息
+        run: |
+          echo "构建完成"
+          echo "版本: ${{ env.VERSION }}"
+          echo "提交: ${{ env.GIT_HASH }}"
+          echo "构建产物已保存到 Artifacts"
+          echo "- ${{ env.TAR_NAME }}"
+          echo "- ${{ env.FULL_TAR }}"
