@@ -99,9 +99,9 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
+          git clone https://gitlab.freedesktop.org/PixelyIon/mesa.git mesa
           cd mesa
-          git checkout dev/adreno-main
+          git checkout tu-pc-fix
           git pull
       
       - name: 自定义品牌
