@@ -2,6 +2,23 @@ name: 开发版 Mesa (aarch64, Auto Update + Detailed Log)
 
 on:
   workflow_dispatch:
+    inputs:
+      apply_mr_41451:
+        description: '应用 MR 41451'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      apply_mr_41323:
+        description: '应用 MR 41323'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
   push:
     branches:
       - main
@@ -42,6 +59,7 @@ jobs:
             echo "❎ 没有新提交，跳过构建"
             echo "new_commit=false" >> $GITHUB_OUTPUT
           fi
+          
   build:
     needs: check-updates
     if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
@@ -62,6 +80,7 @@ jobs:
           free -h
           echo "磁盘空间:"
           df -h
+          
       - name: 安装依赖
         run: |
           echo "📦 安装 Mesa 构建依赖..."
@@ -73,20 +92,109 @@ jobs:
               libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
           echo "✅ 依赖安装完成"
-      - name: 克隆 Mesa 仓库
+          
+      - name: 克隆 Mesa 仓库并应用 MR
         run: |
           echo "📥 克隆 Mesa 仓库..."
           git clone https://gitlab.freedesktop.org/mesa/mesa.git
           cd mesa
           git checkout main
           git pull origin main
-
+          
+          # ============================================
+          # 函数：应用 MR（合并方式优先，补丁备用）
+          # ============================================
+          apply_mr() {
+            MR_ID=$1
+            echo "🔄 正在应用 MR ${MR_ID} ..."
+            
+            # 尝试使用 GitLab 的 MR 引用
+            if git fetch origin merge-requests/${MR_ID}/head:mr-${MR_ID} 2>/dev/null; then
+              if git merge --no-edit mr-${MR_ID}; then
+                echo "✅ MR ${MR_ID} 合并成功"
+                return 0
+              else
+                echo "⚠️ MR ${MR_ID} 合并冲突"
+                return 1
+              fi
+            fi
+            
+            # 备用方案：下载补丁文件
+            echo "⚙️ 尝试使用补丁文件..."
+            if wget -q -O mr-${MR_ID}.patch https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/${MR_ID}.patch; then
+              if git am mr-${MR_ID}.patch; then
+                echo "✅ MR ${MR_ID} 补丁应用成功"
+                return 0
+              else
+                echo "❌ Git am 失败，尝试 patch 命令..."
+                git am --abort 2>/dev/null || true
+                if patch -p1 < mr-${MR_ID}.patch; then
+                  echo "✅ 使用 patch 命令应用成功"
+                  git add .
+                  git commit -m "Apply MR ${MR_ID} changes via patch"
+                  return 0
+                fi
+              fi
+            fi
+            
+            echo "❌ MR ${MR_ID} 应用完全失败"
+            return 1
+          }
+          
+          # ============================================
+          # 应用 MR 41323
+          # ============================================
+          APPLY_41323="${{ github.event.inputs.apply_mr_41323 }}"
+          if [ "$APPLY_41323" = "" ]; then
+            APPLY_41323="true"  # 默认值
+          fi
+          
+          if [ "$APPLY_41323" = "true" ]; then
+            if ! apply_mr 41323; then
+              echo "⚠️ MR 41323 应用失败，继续构建（不加此 MR）"
+              # 重置到干净状态
+              git reset --hard HEAD
+              git clean -fd
+            fi
+          else
+            echo "⏭️ 跳过 MR 41323（手动禁用）"
+          fi
+          
+          # ============================================
+          # 应用 MR 41451
+          # ============================================
+          APPLY_41451="${{ github.event.inputs.apply_mr_41451 }}"
+          if [ "$APPLY_41451" = "" ]; then
+            APPLY_41451="true"
+          fi
+          
+          if [ "$APPLY_41451" = "true" ]; then
+            if ! apply_mr 41451; then
+              echo "⚠️ MR 41451 应用失败，继续构建（不加此 MR）"
+              git reset --hard HEAD
+              git clean -fd
+            fi
+          else
+            echo "⏭️ 跳过 MR 41451（手动禁用）"
+          fi
+          
+          # ============================================
+          # 工作项 15411 的处理说明
+          # ============================================
+          echo "📋 工作项 15411 是议题/任务，不包含直接可应用的代码更改"
+          echo "   如需应用其关联的代码，请找到对应 MR 并添加到上方列表"
+          
+          # ============================================
+          # 自定义品牌修改
+          # ============================================
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-          echo "🧾 最新提交:"
+          
+          echo "🧾 最终提交信息:"
           git log -1 --oneline --decorate
+          
       - name: 构建 Mesa
         run: |
           cd mesa
@@ -139,6 +247,7 @@ jobs:
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+          
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."
@@ -161,6 +270,7 @@ jobs:
           du -h ${TAR_NAME} ${FULL_TAR} | sort -h
           echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
           echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
+          
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
@@ -170,6 +280,7 @@ jobs:
             ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
+            
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -184,6 +295,10 @@ jobs:
               - `${{ env.TAR_NAME }}` → 仅 Vulkan 驱动
               - `${{ env.FULL_TAR }}` → 完整 glibc Mesa 环境
             - 🔐 每个压缩包均附带 `.sha256` 校验文件
+            
+            **集成的上游更改:**
+            ${{ github.event.inputs.apply_mr_41451 == 'true' && '- ✅ MR 41451' || '' }}
+            ${{ github.event.inputs.apply_mr_41323 == 'true' && '- ✅ MR 41323' || '' }}
           files: |
             ${{ env.TAR_NAME }}
             ${{ env.FULL_TAR }}
@@ -191,6 +306,7 @@ jobs:
             ${{ env.FULL_TAR }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
 
       - name: 保存最新提交记录
         if: ${{ needs.check-updates.outputs.latest_hash != '' }}
@@ -201,6 +317,7 @@ jobs:
           git add .mesa_latest_commit || true
           git commit -m "Update Mesa commit record to ${{ needs.check-updates.outputs.latest_hash }}" || echo "No new commit to save"
           git push || echo "⚠️ 推送失败（可能无更改）"
+          
       - name: 输出总结信息
         run: |
           echo "✅ Mesa 构建与打包完成"
