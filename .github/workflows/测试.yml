@@ -141,36 +141,34 @@ jobs:
           
           mkdir -p builddir
           meson setup builddir \
-            --libdir=lib \
-            -Dprefix=/data/data/com.termux/files/usr/glibc \
-            -Dbuildtype=release \
-            -Dplatforms=x11 \
-            -Degl-native-platform=x11 \
-            -Dglx=dri \
-            -Dglx-direct=true \
-            -Dopengl=true \
-            -Dgles1=disabled \
-            -Dgles2=disabled \
-            -Dglvnd=disabled \
-            -Degl=disabled \
-            -Dllvm=enabled \
-            -Dshared-llvm=enabled \
-            -Dshader-cache=enabled \
-            -Dshared-glapi=enabled \
-            -Dxlib-lease=enabled \
-            -Dvulkan-beta=true \
-            -Dlibunwind=disabled \
-            -Dvalgrind=disabled \
-            -Dmicrosoft-clc=disabled \
-            -Dgallium-rusticl=false \
-            -Dgallium-drivers=zink,freedreno,virgl,llvmpipe,softpipe \
-            -Dgallium-rusticl-enable-drivers=freedreno \
-            -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast,virtio \
-            -Dfreedreno-kmds=kgsl \
-            -Dvideo-codecs=all \
-            -Db_ndebug=true \
-            -Dstrip=true
+              --libdir=lib \
+              -Dprefix=/data/data/com.termux/files/usr/glibc \
+              -Dplatforms=x11,wayland \
+              -Dgallium-drivers= \
+              -Dgallium-va=disabled \
+              -Dgallium-mediafoundation=disabled \
+              -Dvulkan-drivers=freedreno \
+              -Dvulkan-layers= \
+              -Dgles1=disabled \
+              -Dgles2=disabled \
+              -Dopengl=false \
+              -Dgbm=disabled \
+              -Dglx=disabled \
+              -Dxlib-lease=disabled \
+              -Dfreedreno-kmds=kgsl \
+              -Degl=disabled \
+              -Dglvnd=disabled \
+              -Dintel-rt=disabled \
+              -Dmicrosoft-clc=disabled \
+              -Dllvm=disabled \
+              -Dvalgrind=disabled \
+              -Dbuild-tests=false \
+              -Dlibunwind=disabled \
+              -Dlmsensors=disabled \
+              -Dandroid-libbacktrace=disabled \
+              -Dbuildtype=release \
+              -Db_ndebug=true \
+              -Dstrip=true
           
           ninja -C builddir -j$(nproc)
           ninja -C builddir install
