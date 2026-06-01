@@ -124,6 +124,10 @@ jobs:
           sed -i 's/<--- /<!-- /g' src/freedreno/registers/adreno/a6xx.xml
           sed -i '3290d' src/freedreno/registers/adreno/a6xx.xml
           sed -i '3289a\\t\t<!--' src/freedreno/registers/adreno/a6xx.xml
+
+          patch -p1 --fuzz=3 --no-backup-if-mismatch < "$GITHUB_WORKSPACE/39751.patch"
+
+          rm src/freedreno/vulkan/tu_knl_kgsl.cc.rej
           
       - name: 构建 Mesa
         run: |
