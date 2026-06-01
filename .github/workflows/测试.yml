@@ -127,7 +127,6 @@ jobs:
 
           patch -p1 --fuzz=3 --no-backup-if-mismatch < "$GITHUB_WORKSPACE/39751.patch"
 
-          rm src/freedreno/vulkan/tu_knl_kgsl.cc.rej
           
       - name: 构建 Mesa
         run: |
