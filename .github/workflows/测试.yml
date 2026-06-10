@@ -154,9 +154,9 @@ jobs:
               -Dvulkan-layers= \
               -Dgles1=disabled \
               -Dgles2=disabled \
-              -Dopengl=false \
+              -Dopengl=true \
               -Dgbm=disabled \
-              -Dglx=disabled \
+              -Dglx=enabled \
               -Dxlib-lease=disabled \
               -Dfreedreno-kmds=kgsl \
               -Degl=disabled \
