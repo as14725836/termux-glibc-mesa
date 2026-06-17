@@ -156,7 +156,7 @@ jobs:
               -Dgles2=disabled \
               -Dopengl=true \
               -Dgbm=disabled \
-              -Dglx=enabled \
+              -Dglx=dri \
               -Dxlib-lease=disabled \
               -Dfreedreno-kmds=kgsl \
               -Degl=disabled \
