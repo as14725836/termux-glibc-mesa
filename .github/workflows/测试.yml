@@ -146,7 +146,7 @@ jobs:
           meson setup builddir \
               --libdir=lib \
               -Dprefix=/data/data/com.termux/files/usr/glibc \
-              -Dplatforms=x11,wayland \
+              -Dplatforms=x11 \
               -Dgallium-drivers= \
               -Dgallium-va=disabled \
               -Dgallium-mediafoundation=disabled \
@@ -154,9 +154,9 @@ jobs:
               -Dvulkan-layers= \
               -Dgles1=disabled \
               -Dgles2=disabled \
-              -Dopengl=true \
+              -Dopengl=false \
               -Dgbm=disabled \
-              -Dglx=dri \
+              -Dglx=disabled \
               -Dxlib-lease=disabled \
               -Dfreedreno-kmds=kgsl \
               -Degl=disabled \
