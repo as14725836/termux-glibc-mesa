@@ -82,51 +82,6 @@ jobs:
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
-          #sed -i '/A8XX_SP_UNKNOWN_A9A8/s/^/# /' src/freedreno/common/freedreno_devices.py
-
-          echo "性能回归修复测试"
-          sed -i '876s/0x0000003f/0x1f1f/
-          927s/0x0000003f/0x1f1f/
-          1176s/0x0000003f/0x1f1f/' src/freedreno/common/freedreno_devices.py
-
-          sed -i 's/\[A6XXRegs\.REG_A6XX_PC_MODE_CNTL, 0x1f\],/[A6XXRegs.REG_A6XX_PC_MODE_CNTL, 0x1f1f],/g' src/freedreno/common/freedreno_devices.py
-
-          sed -i '876s/,  # 0x00001f1f in some tests//
-          925,926d
-          876s/0x1f1f]/0x1f1f],/' src/freedreno/common/freedreno_devices.py
-
-          sed -i '3289c\
-          \t<reg32 offset="0x9804" name="PC_MODE_CNTL" low="0" high="7" variants="A6XX-A7XX" usage="draw">\
-          \t\t<!-- \
-          \t\t\tThe higher this is set, the faster primitive processing performance\
-          \t\t\tends up being. It is likely the amount of entries to process/fetch.\
-          \t\t-->\
-          \t\t<bitfield name="COUNT1" low="0" high="4" type="uint"\/>\
-          \t\t<!--\
-          \t\t\tSetting this slows down primitive processing substantially, but it\
-          \t\t\twas noted to fix some vertex corruption issues in the past. Likely\
-          \t\t\tserves as a workaround to serialize the primitive pipeline?\
-          \t\t-->\
-          \t\t<bitfield name="UNK5" pos="5" type="boolean"\/>\
-          \t\t<!-- Never set by the blob, removed in A7XX. Unclear impact. -->\
-          \t\t<bitfield name="UNK6" pos="6" type="boolean" variants="A6XX"\/>\
-          \t\t<!-- Never set by the blob. Unclear impact. -->\
-          \t\t<bitfield name="UNK7" pos="7" type="boolean"\/>\
-          \t\t<!--\
-          \t\t\tSame as COUNT1 but one bit larger, this replaces COUNT1 mid-A7XX but\
-          \t\t\tthe proprietary driver tends to set it to the same or larger value\
-          \t\t\t(by using the extra bit) as COUNT1.\
-          \t\t-->\
-          \t\t<bitfield name="COUNT2" low="8" high="13" type="uint" variants="A7XX-"\/>\
-          \t<\/reg32>' src/freedreno/registers/adreno/a6xx.xml
-
-          sed -i '/com.termux/d' src/freedreno/registers/adreno/a6xx.xml
-          sed -i 's/<--- /<!-- /g' src/freedreno/registers/adreno/a6xx.xml
-          sed -i '3290d' src/freedreno/registers/adreno/a6xx.xml
-          sed -i '3289a\\t\t<!--' src/freedreno/registers/adreno/a6xx.xml
-
-          patch -p1 --fuzz=3 --no-backup-if-mismatch < "$GITHUB_WORKSPACE/39751.patch"
-
           
       - name: 构建 Mesa
         run: |
