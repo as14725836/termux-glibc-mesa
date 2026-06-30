@@ -69,7 +69,7 @@ jobs:
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
-          git checkout dev/adreno-main
+          git checkout turnip-main
           git pull
           echo "🧾 当前分支和提交:"
           git branch -v
@@ -124,6 +124,7 @@ jobs:
               -Dlibunwind=disabled \
               -Dlmsensors=disabled \
               -Dandroid-libbacktrace=disabled \
+              -Dvideo-codecs=all \
               -Dbuildtype=release \
               -Db_ndebug=true \
               -Dstrip=true
