@@ -246,7 +246,6 @@ jobs:
             -Dprefix=/opt/mesa \
             -Dbuildtype=release \
             -Dplatforms=x11,wayland \
-            -Degl-native-platform=wayland \
             -Dglx=dri \
             -Dglx-direct=true \
             -Dopengl=true \
