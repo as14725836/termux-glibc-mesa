@@ -113,8 +113,7 @@ jobs:
             --libdir=lib \
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
-            -Dplatforms=x11,wayland \
-            -Degl-native-platform=wayland \
+            -Dplatforms=x11 \
             -Dglx=dri \
             -Dglx-direct=true \
             -Dopengl=true \
