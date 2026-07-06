@@ -1,34 +1,28 @@
-name: Build VkGHL (Fix Headers)
+name: Build VkGHL (ARM64 Native)
 
 on:
   workflow_dispatch:
 
 jobs:
   build-vkghl:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     steps:
-      - name: Install System Dependencies
+      # ============================================
+      # 1) 原生 ARM64 环境，直接 apt 安装所有依赖
+      # ============================================
+      - name: Install Dependencies
         run: |
-          sudo dpkg --add-architecture arm64
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake python3 git \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
             libvulkan-dev \
-            libxrandr-dev:arm64 libx11-dev:arm64 libxcb-dev:arm64 \
-            libwayland-dev:arm64 libxkbcommon-dev:arm64
+            vulkan-validationlayers-dev \
+            libjsoncpp-dev \
+            libxrandr-dev libx11-dev libxcb-dev libwayland-dev
 
-      # --- 交叉编译工具链设定 ---
-      - name: Setup Cross-Compile Toolchain
-        run: |
-          export CC_aarch64=aarch64-linux-gnu-gcc
-          export CXX_aarch64=aarch64-linux-gnu-g++
-          export AR_aarch64=aarch64-linux-gnu-ar
-          export RANLIB_aarch64=aarch64-linux-gnu-ranlib
-          echo "CC_aarch64=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CXX_aarch64=aarch64-linux-gnu-g++" >> $GITHUB_ENV
-
-      # --- 1) Vulkan-Headers ---
+      # ============================================
+      # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
+      # ============================================
       - name: Build Vulkan-Headers
         run: |
           git clone https://github.com/KhronosGroup/Vulkan-Headers.git
@@ -37,91 +31,34 @@ jobs:
           cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/vk_headers
           make -j$(nproc) install
 
-      # --- 2) Vulkan-Loader ---
-      - name: Build Vulkan-Loader
-        run: |
-          git clone https://github.com/KhronosGroup/Vulkan-Loader.git
-          cd Vulkan-Loader
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_INSTALL_PREFIX=/tmp/vk_loader \
-            -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DBUILD_TESTS=OFF \
-            -DBUILD_WSI_XCB_SUPPORT=OFF \
-            -DBUILD_WSI_XLIB_SUPPORT=OFF \
-            -DBUILD_WSI_WAYLAND_SUPPORT=OFF
-          make -j$(nproc) install
-
-      # --- 3) Vulkan-ValidationLayers (最小化：跳过 layer 构建，只出 VkLayer_utils) ---
-      - name: Build Vulkan-ValidationLayers
-        run: |
-          git clone https://github.com/KhronosGroup/Vulkan-ValidationLayers.git
-          cd Vulkan-ValidationLayers
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_INSTALL_PREFIX=/tmp/vk_vl \
-            -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
-            -DVULKAN_LOADER_INSTALL_DIR=/tmp/vk_loader \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DBUILD_TESTS=OFF \
-            -DBUILD_WERROR=OFF \
-            -DBUILD_LAYERS=OFF \
-            -DBUILD_LAYER_SUPPORT_FILES=ON
-          make -j$(nproc) VkLayer_utils install
-
-      # --- 4) jsoncpp（413b473^ 版本硬依赖） ---
-      - name: Build jsoncpp
-        run: |
-          git clone https://github.com/open-source-parsers/jsoncpp.git
-          cd jsoncpp
-          mkdir build && cd build
-          cmake .. \
-            -DCMAKE_INSTALL_PREFIX=/tmp/jsoncpp \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DJSONCPP_WITH_TESTS=OFF \
-            -DJSONCPP_WITH_POST_BUILD_UNITTEST=OFF
-          make -j$(nproc) install
-
-      # --- 5) VulkanTools 旧版 (包含 layer_factory) + VkGHL ---
+      # ============================================
+      # 3) VulkanTools 旧版 (包含 layer_factory) + VkGHL
+      # ============================================
       - name: Prepare VulkanTools & VkGHL
         run: |
           git clone https://github.com/LunarG/VulkanTools.git
           cd VulkanTools
-          # checkout 到移除 layer_factory 之前的最后一个 commit
+          # 回到移除 layer_factory 之前的最后一个 commit
           git checkout 413b473^
           
-          # 清空示例层
+          # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
-          
-          # 放入 VkGHL
           git clone https://github.com/pchome/VkGHL layer_factory/VkGHL
 
-      # --- 6) 构建 VkGHL ---
-      - name: Build VkGHL for ARM64
+      # ============================================
+      # 4) 原生编译 VkGHL
+      # ============================================
+      - name: Build VkGHL
         run: |
           cd VulkanTools
-          mkdir build_arm64 && cd build_arm64
+          mkdir build && cd build
           
           cmake .. \
-            -DCMAKE_PREFIX_PATH="/tmp/vk_headers;/tmp/vk_loader;/tmp/vk_vl;/tmp/jsoncpp" \
-            -DCMAKE_SYSTEM_NAME=Linux \
-            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DCMAKE_PREFIX_PATH="/tmp/vk_headers;/usr" \
             -DCMAKE_BUILD_TYPE=Release \
             -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
-            -DVULKAN_LOADER_INSTALL_DIR=/tmp/vk_loader \
-            -DVULKAN_VALIDATIONLAYERS_INSTALL_DIR=/tmp/vk_vl \
+            -DVULKAN_LOADER_INSTALL_DIR=/usr \
+            -DVULKAN_VALIDATIONLAYERS_INSTALL_DIR=/usr \
             -DBUILD_TESTS=OFF \
             -DBUILD_APIDUMP=OFF \
             -DBUILD_MONITOR=OFF \
@@ -132,14 +69,17 @@ jobs:
           
           make -j$(nproc) VkLayer_VkGHL
 
-      # --- 7) 收集产物 ---
-      - name: Locate and Prepare Artifacts
+      # ============================================
+      # 5) 收集产物
+      # ============================================
+      - name: Collect Artifacts
         run: |
           mkdir -p output
-          find VulkanTools/build_arm64 -name "libVkLayer_VkGHL.so" -exec cp {} output/ \;
-          find VulkanTools/build_arm64 -name "VkLayer_VkGHL.json" -exec cp {} output/ \;
+          find VulkanTools/build -name "libVkLayer_VkGHL.so" -exec cp {} output/ \;
+          find VulkanTools/build -name "VkLayer_VkGHL.json" -exec cp {} output/ \;
+          file output/libVkLayer_VkGHL.so
 
       - uses: actions/upload-artifact@v4
         with:
-          name: vkghl-arm64-fixed
+          name: vkghl-arm64
           path: output/
