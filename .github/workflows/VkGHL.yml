@@ -17,8 +17,7 @@ jobs:
             build-essential cmake python3 git \
             libvulkan-dev \
             vulkan-validationlayers-dev \
-            libjsoncpp-dev \
-            libxrandr-dev libx11-dev libxcb-dev libwayland-dev
+            libjsoncpp-dev
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
@@ -59,6 +58,9 @@ jobs:
             -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
             -DVULKAN_LOADER_INSTALL_DIR=/usr \
             -DVULKAN_VALIDATIONLAYERS_INSTALL_DIR=/usr \
+            -DBUILD_WSI_XCB_SUPPORT=OFF \
+            -DBUILD_WSI_XLIB_SUPPORT=OFF \
+            -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
             -DBUILD_TESTS=OFF \
             -DBUILD_APIDUMP=OFF \
             -DBUILD_MONITOR=OFF \
