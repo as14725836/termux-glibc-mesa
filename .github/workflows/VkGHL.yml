@@ -62,7 +62,7 @@ jobs:
           cd VulkanTools
           
           # 排除 VK_EXT_mesh_shader：dispatch table 只有 NV 版本，避免生成 EXT 函数
-          sed -i 's/-removeExtensions VK_NV_cooperative_matrix/-removeExtensions VK_EXT_mesh_shader -removeExtensions VK_NV_cooperative_matrix/' CMakeLists.txt
+          sed -i 's/-removeExtensions VK_KHR_video_queue/-removeExtensions VK_EXT_mesh_shader -removeExtensions VK_KHR_video_queue/' CMakeLists.txt
           
           # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
@@ -96,8 +96,13 @@ jobs:
             -DBUILD_LAYERMGR=OFF \
             -DVkLayer_VkGHL_INSTALL_DIR=/usr/lib
           
-          # 已经通过 CMakeLists.txt 排除了 VK_EXT_mesh_shader，直接编译
-          make -j$(nproc) VkLayer_VkGHL
+          # 已通过 CMakeLists.txt 排除 VK_EXT_mesh_shader，直接编译
+          # 兜底：若仍有 EXT/NV 不匹配，只修补 dispatch_table 调用（不碰函数名和 map 键）
+          make -j$(nproc) VkLayer_VkGHL 2>&1 || {
+            sed -i 's/dispatch_table\.CmdDrawMeshTasksIndirectCountEXT/dispatch_table.CmdDrawMeshTasksIndirectCountNV/g' layer_factory/layer_factory.cpp
+            sed -i 's/dispatch_table\.CmdDrawMeshTasksEXT\b/dispatch_table.CmdDrawMeshTasksNV/g' layer_factory/layer_factory.cpp
+            make -j$(nproc) VkLayer_VkGHL
+          }
 
       # ============================================
       # 5) 收集产物
