@@ -19,6 +19,19 @@ jobs:
             vulkan-validationlayers-dev \
             libjsoncpp-dev
           pip3 install --upgrade pyparsing
+          
+          # Ubuntu 的 vulkan-validationlayers-dev 将 generated/* 平铺在 vulkan/ 中
+          # 而 layer_factory 期望 generated/ 子目录，创建符号链接
+          sudo mkdir -p /usr/include/vulkan/generated
+          for f in /usr/include/vulkan/vk_dispatch_table_helper.h \
+                   /usr/include/vulkan/vk_enum_string_helper.h \
+                   /usr/include/vulkan/vk_extension_helper.h \
+                   /usr/include/vulkan/vk_layer_dispatch_table.h \
+                   /usr/include/vulkan/vk_object_types.h \
+                   /usr/include/vulkan/vk_safe_struct.h \
+                   /usr/include/vulkan/vk_typemap_helper.h; do
+            [ -f "$f" ] && sudo ln -sf "$f" /usr/include/vulkan/generated/
+          done
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
