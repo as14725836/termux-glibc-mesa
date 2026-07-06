@@ -22,10 +22,11 @@ jobs:
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
+      #     使用 v1.3.261，与 413b473^ (2023.8) 兼容，避免 ohos 等新平台问题
       # ============================================
       - name: Build Vulkan-Headers
         run: |
-          git clone https://github.com/KhronosGroup/Vulkan-Headers.git
+          git clone --branch v1.3.261 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
           cd Vulkan-Headers
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/vk_headers
@@ -40,6 +41,9 @@ jobs:
           cd VulkanTools
           # 回到移除 layer_factory 之前的最后一个 commit
           git checkout 413b473^
+          
+          # 修补：新版 Vulkan-Headers 引入 ohos 平台，旧版 common_codegen.py 不识别
+          sed -i "s/'prospero': \"VK_USE_PLATFORM_OHOS\"/'prospero': \"VK_USE_PLATFORM_OHOS\",\n    'ohos': \"VK_USE_PLATFORM_OHOS\"/" scripts/common_codegen.py
           
           # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
