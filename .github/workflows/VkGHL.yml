@@ -61,6 +61,9 @@ jobs:
           git clone --branch v1.3.239 --depth 1 https://github.com/LunarG/VulkanTools.git
           cd VulkanTools
           
+          # 排除 VK_EXT_mesh_shader：dispatch table 只有 NV 版本，避免生成 EXT 函数
+          sed -i 's/-removeExtensions VK_NV_cooperative_matrix/-removeExtensions VK_EXT_mesh_shader -removeExtensions VK_NV_cooperative_matrix/' CMakeLists.txt
+          
           # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
           git clone https://github.com/pchome/VkGHL layer_factory/VkGHL
@@ -93,15 +96,7 @@ jobs:
             -DBUILD_LAYERMGR=OFF \
             -DVkLayer_VkGHL_INSTALL_DIR=/usr/lib
           
-          # 先生成 layer_factory.cpp/.h
-          make generate_vlf
-          
-          # 修补：vk.xml 含 EXT mesh shader 但 dispatch table 只有 NV 版本
-          sed -i 's/CmdDrawMeshTasksIndirectCountEXT/CmdDrawMeshTasksIndirectCountNV/g' \
-            layer_factory/layer_factory.cpp layer_factory/layer_factory.h
-          sed -i 's/CmdDrawMeshTasksEXT/CmdDrawMeshTasksNV/g' \
-            layer_factory/layer_factory.cpp layer_factory/layer_factory.h
-          
+          # 已经通过 CMakeLists.txt 排除了 VK_EXT_mesh_shader，直接编译
           make -j$(nproc) VkLayer_VkGHL
 
       # ============================================
