@@ -84,6 +84,7 @@ jobs:
             -DBUILD_WSI_XCB_SUPPORT=OFF \
             -DBUILD_WSI_XLIB_SUPPORT=OFF \
             -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
+            -DBUILD_WERROR=OFF \
             -DBUILD_TESTS=OFF \
             -DBUILD_APIDUMP=OFF \
             -DBUILD_MONITOR=OFF \
@@ -91,6 +92,15 @@ jobs:
             -DBUILD_VIA=OFF \
             -DBUILD_LAYERMGR=OFF \
             -DVkLayer_VkGHL_INSTALL_DIR=/usr/lib
+          
+          # 先生成 layer_factory.cpp/.h
+          make generate_vlf
+          
+          # 修补：vk.xml 含 EXT mesh shader 但 dispatch table 只有 NV 版本
+          sed -i 's/CmdDrawMeshTasksIndirectCountEXT/CmdDrawMeshTasksIndirectCountNV/g' \
+            layer_factory/layer_factory.cpp layer_factory/layer_factory.h
+          sed -i 's/CmdDrawMeshTasksEXT/CmdDrawMeshTasksNV/g' \
+            layer_factory/layer_factory.cpp layer_factory/layer_factory.h
           
           make -j$(nproc) VkLayer_VkGHL
 
