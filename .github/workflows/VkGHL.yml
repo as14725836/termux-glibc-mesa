@@ -35,11 +35,11 @@ jobs:
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
-      #     使用 v1.3.250，与 VulkanTools v1.3.250 配套
+      #     全部组件统一使用 v1.3.239，保证互相兼容
       # ============================================
       - name: Build Vulkan-Headers
         run: |
-          git clone --branch v1.3.250 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+          git clone --branch v1.3.239 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
           cd Vulkan-Headers
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/vk_headers
@@ -47,19 +47,18 @@ jobs:
 
       # ============================================
       # 3) 克隆 Vulkan-ValidationLayers 源码（仅头文件，apt 包缺少 containers/ 等内部头文件）
-      #     使用 v1.3.250，与 VulkanTools v1.3.250 配套
+      #     v1.3.239，与 VulkanTools 配套
       # ============================================
       - name: Fetch ValidationLayers Headers
         run: |
-          git clone --branch v1.3.250 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
+          git clone --branch v1.3.239 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
 
       # ============================================
-      # 4) VulkanTools v1.3.250 (包含 layer_factory) + VkGHL
-      #     v1.3.250 layer_factory 更独立，不依赖 VL 内部 generated 文件
+      # 4) VulkanTools v1.3.239 (包含 layer_factory) + VkGHL
       # ============================================
       - name: Prepare VulkanTools & VkGHL
         run: |
-          git clone --branch v1.3.250 --depth 1 https://github.com/LunarG/VulkanTools.git
+          git clone --branch v1.3.239 --depth 1 https://github.com/LunarG/VulkanTools.git
           cd VulkanTools
           
           # 清空示例层，放入 VkGHL
