@@ -9,11 +9,14 @@ jobs:
     steps:
       - name: Install System Dependencies
         run: |
+          sudo dpkg --add-architecture arm64
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake python3 git \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            libvulkan-dev
+            libvulkan-dev \
+            libxrandr-dev:arm64 libx11-dev:arm64 libxcb-dev:arm64 \
+            libwayland-dev:arm64 libxkbcommon-dev:arm64
 
       # --- 交叉编译工具链设定 ---
       - name: Setup Cross-Compile Toolchain
@@ -47,7 +50,10 @@ jobs:
             -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
             -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
             -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
-            -DBUILD_TESTS=OFF
+            -DBUILD_TESTS=OFF \
+            -DBUILD_WSI_XCB_SUPPORT=OFF \
+            -DBUILD_WSI_XLIB_SUPPORT=OFF \
+            -DBUILD_WSI_WAYLAND_SUPPORT=OFF
           make -j$(nproc) install
 
       # --- 3) Vulkan-ValidationLayers (最小化：跳过 layer 构建，只出 VkLayer_utils) ---
