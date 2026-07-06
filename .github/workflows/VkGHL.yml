@@ -35,11 +35,11 @@ jobs:
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
-      #     使用 v1.3.261，与 413b473^ (2023.8) 兼容，避免 ohos 等新平台问题
+      #     使用 v1.3.250，与 VulkanTools v1.3.250 配套
       # ============================================
       - name: Build Vulkan-Headers
         run: |
-          git clone --branch v1.3.261 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+          git clone --branch v1.3.250 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
           cd Vulkan-Headers
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/vk_headers
@@ -47,23 +47,20 @@ jobs:
 
       # ============================================
       # 3) 克隆 Vulkan-ValidationLayers 源码（仅头文件，apt 包缺少 containers/ 等内部头文件）
-      #     使用 v1.3.261，与 413b473^ 兼容
+      #     使用 v1.3.250，与 VulkanTools v1.3.250 配套
       # ============================================
       - name: Fetch ValidationLayers Headers
         run: |
-          git clone --branch v1.3.261 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
+          git clone --branch v1.3.250 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
 
       # ============================================
-      # 3) VulkanTools 旧版 (包含 layer_factory) + VkGHL
-      #     使用 v1.3.250，layer_factory 更独立，不依赖 VL 内部 generated 文件
+      # 4) VulkanTools v1.3.250 (包含 layer_factory) + VkGHL
+      #     v1.3.250 layer_factory 更独立，不依赖 VL 内部 generated 文件
       # ============================================
       - name: Prepare VulkanTools & VkGHL
         run: |
           git clone --branch v1.3.250 --depth 1 https://github.com/LunarG/VulkanTools.git
           cd VulkanTools
-          
-          # 修补：新版 Vulkan-Headers 引入 ohos 平台，旧版 common_codegen.py 不识别
-          sed -i "s/'prospero': \"VK_USE_PLATFORM_OHOS\"/'prospero': \"VK_USE_PLATFORM_OHOS\",\n    'ohos': \"VK_USE_PLATFORM_OHOS\"/" scripts/common_codegen.py
           
           # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
@@ -80,6 +77,7 @@ jobs:
           cmake .. \
             -DCMAKE_PREFIX_PATH="/tmp/vk_headers;/usr" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_DATADIR=share \
             -DCMAKE_CXX_FLAGS="-I/tmp/vk_vl_src -I/tmp/vk_vl_src/layers" \
             -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
             -DVULKAN_LOADER_INSTALL_DIR=/usr \
