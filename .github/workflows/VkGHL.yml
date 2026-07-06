@@ -9,6 +9,7 @@ jobs:
     steps:
       # ============================================
       # 1) 原生 ARM64 环境，直接 apt 安装所有依赖
+      #    apt 包版本 = 1.3.204，全部组件对齐此版本
       # ============================================
       - name: Install Dependencies
         run: |
@@ -34,42 +35,37 @@ jobs:
           done
 
       # ============================================
-      # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
-      #     全部组件统一使用 v1.3.239，保证互相兼容
+      # 2) 编译 Vulkan-Headers v1.3.204（apt 包版本一致，避免 dispatch table 不匹配）
       # ============================================
       - name: Build Vulkan-Headers
         run: |
-          git clone --branch v1.3.239 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
+          git clone --branch v1.3.204 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
           cd Vulkan-Headers
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=/tmp/vk_headers
           make -j$(nproc) install
 
       # ============================================
-      # 3) 克隆 Vulkan-ValidationLayers 源码（仅头文件，apt 包缺少 containers/ 等内部头文件）
-      #     v1.3.239，与 VulkanTools 配套
+      # 3) 克隆 Vulkan-ValidationLayers v1.3.204 源码（仅头文件，apt 包缺少 containers/ 等内部头文件）
       # ============================================
       - name: Fetch ValidationLayers Headers
         run: |
-          git clone --branch v1.3.239 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
+          git clone --branch v1.3.204 --depth 1 https://github.com/KhronosGroup/Vulkan-ValidationLayers.git /tmp/vk_vl_src
 
       # ============================================
-      # 4) VulkanTools v1.3.239 (包含 layer_factory) + VkGHL
+      # 4) VulkanTools sdk-1.3.204.0 (包含 layer_factory) + VkGHL
       # ============================================
       - name: Prepare VulkanTools & VkGHL
         run: |
-          git clone --branch v1.3.239 --depth 1 https://github.com/LunarG/VulkanTools.git
+          git clone --branch sdk-1.3.204.0 --depth 1 https://github.com/LunarG/VulkanTools.git
           cd VulkanTools
-          
-          # 排除 VK_EXT_mesh_shader：dispatch table 只有 NV 版本，避免生成 EXT 函数
-          sed -i 's/-removeExtensions VK_KHR_video_queue/-removeExtensions VK_EXT_mesh_shader -removeExtensions VK_KHR_video_queue/' CMakeLists.txt
           
           # 清空示例层，放入 VkGHL
           rm -rf layer_factory/demo_layer layer_factory/starter_layer
           git clone https://github.com/pchome/VkGHL layer_factory/VkGHL
 
       # ============================================
-      # 4) 原生编译 VkGHL
+      # 5) 原生编译 VkGHL
       # ============================================
       - name: Build VkGHL
         run: |
@@ -79,7 +75,6 @@ jobs:
           cmake .. \
             -DCMAKE_PREFIX_PATH="/tmp/vk_headers;/usr" \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_DATADIR=share \
             -DCMAKE_CXX_FLAGS="-I/tmp/vk_vl_src -I/tmp/vk_vl_src/layers" \
             -DVULKAN_HEADERS_INSTALL_DIR=/tmp/vk_headers \
             -DVULKAN_LOADER_INSTALL_DIR=/usr \
@@ -89,23 +84,16 @@ jobs:
             -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
             -DBUILD_WERROR=OFF \
             -DBUILD_TESTS=OFF \
-            -DBUILD_APIDUMP=OFF \
-            -DBUILD_MONITOR=OFF \
-            -DBUILD_SCREENSHOT=OFF \
+            -DBUILD_LAYERSVT=OFF \
             -DBUILD_VIA=OFF \
             -DBUILD_LAYERMGR=OFF \
+            -DCMAKE_INSTALL_LIBDIR=lib \
             -DVkLayer_VkGHL_INSTALL_DIR=/usr/lib
           
-          # 已通过 CMakeLists.txt 排除 VK_EXT_mesh_shader，直接编译
-          # 兜底：若仍有 EXT/NV 不匹配，只修补 dispatch_table 调用（不碰函数名和 map 键）
-          make -j$(nproc) VkLayer_VkGHL 2>&1 || {
-            sed -i 's/dispatch_table\.CmdDrawMeshTasksIndirectCountEXT/dispatch_table.CmdDrawMeshTasksIndirectCountNV/g' layer_factory/layer_factory.cpp
-            sed -i 's/dispatch_table\.CmdDrawMeshTasksEXT\b/dispatch_table.CmdDrawMeshTasksNV/g' layer_factory/layer_factory.cpp
-            make -j$(nproc) VkLayer_VkGHL
-          }
+          make -j$(nproc) VkLayer_VkGHL
 
       # ============================================
-      # 5) 收集产物
+      # 6) 收集产物
       # ============================================
       - name: Collect Artifacts
         run: |
