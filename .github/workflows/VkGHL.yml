@@ -14,10 +14,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake python3 git \
+            build-essential cmake python3 git python3-pip \
             libvulkan-dev \
             vulkan-validationlayers-dev \
             libjsoncpp-dev
+          pip3 install --upgrade pyparsing
 
       # ============================================
       # 2) 编译 Vulkan-Headers（apt 的 libvulkan-dev 不提供 VulkanHeadersConfig.cmake）
