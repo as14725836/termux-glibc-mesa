@@ -114,7 +114,7 @@ jobs:
             -Dlmsensors=disabled \
             -Dllvm=enabled \
             -Dmesa-clc=enabled \
-            -Dopengl=enabled \
+            -Dopengl=true \
             -Dpanfrost-kmds=kbase,panthor \
             -Dplatforms=x11 \
             -Dprecomp-compiler=enabled \
