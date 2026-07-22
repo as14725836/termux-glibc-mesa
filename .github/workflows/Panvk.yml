@@ -144,20 +144,15 @@ jobs:
           cd mesa
           PACK_START=$(date +%s)
           
-          TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
-          
           FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
           
           cd ..
-          sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
           sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
           
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
-          
-          echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
+        
           echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
       
       - name: 上传构建产物到 Artifacts
@@ -165,9 +160,7 @@ jobs:
         with:
           name: mesa-artifacts-${{ env.VERSION }}-aarch64
           path: |
-            ${{ env.TAR_NAME }}
             ${{ env.FULL_TAR }}
-            ${{ env.TAR_NAME }}.sha256
             ${{ env.FULL_TAR }}.sha256
       
       - name: 保存最新提交记录
@@ -186,5 +179,4 @@ jobs:
           echo "版本: ${{ env.VERSION }}"
           echo "提交: ${{ env.GIT_HASH }}"
           echo "构建产物已保存到 Artifacts"
-          echo "- ${{ env.TAR_NAME }}"
           echo "- ${{ env.FULL_TAR }}"
