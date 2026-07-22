@@ -124,7 +124,7 @@ jobs:
             -Dshared-glapi=disabled \
             -Dtools= \
             -Dvalgrind=disabled \
-            -Dvideo-codecs=all \
+            -Dvideo-codecs= \
             -Dvulkan-drivers=panfrost \
             -Dvulkan-layers= \
             -Dxmlconfig=disabled \
