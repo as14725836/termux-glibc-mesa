@@ -45,7 +45,7 @@ jobs:
       - name: Configure minimal release build
         shell: bash
         run: |
-          meson setup "${BUILD_DIR}" \
+          meson setup "${BUILD_DIR}" . \
             --buildtype=release \
             --prefix=/usr \
             --libdir="${LIBDIR}" \
