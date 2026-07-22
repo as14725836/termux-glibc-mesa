@@ -107,7 +107,7 @@ jobs:
             -Dgbm=disabled \
             -Dgles1=disabled \
             -Dgles2=disabled \
-            -Dglx=enabled \
+            -Dglx=disabled \
             -Dinstall-mesa-clc=false \
             -Dinstall-precomp-compiler=false \
             -Dlibunwind=disabled \
