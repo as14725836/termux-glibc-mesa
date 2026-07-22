@@ -1,54 +1,106 @@
-name: PanVK kbase release packages
-
-'on':
+name: 测试版 PanVK-Mesa (aarch64, Auto Update + Detailed Log)
+on:
   workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Optional release tag to create or update
-        required: false
-        type: string
   push:
-    tags:
-      - 'kbase-v*'
-
+    branches:
+      - main
+      - 'refs/tags/**'
+  schedule:
+    - cron: "0 22 * * *"
 permissions:
   contents: write
-
+  actions: write
 jobs:
-  build-packages:
-    name: Build Ubuntu 24.04 ARM tarball
+  check-updates:
     runs-on: ubuntu-24.04-arm
-    env:
-      BUILD_DIR: build-release-ubuntu2404
-      PACKAGE_NAME: mesa-panvk-kbase
-      TARGET: ubuntu2404
-      LIBDIR: lib/aarch64-linux-gnu
-    
+    outputs:
+      new_commit: ${{ steps.check.outputs.new_commit }}
+      latest_hash: ${{ steps.check.outputs.latest_hash }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install build dependencies
-        shell: bash
+      - name: 检查 Mesa 上游更新
+        id: check
         run: |
+          echo "🔍 检查 Mesa 上游提交..."
+          LATEST_HASH=$(git ls-remote https://gitlab.freedesktop.org/mesa/mesa.git refs/heads/main | awk '{print $1}')
+          echo "最新上游提交: $LATEST_HASH"
+          
+          STATE_FILE=".mesa_latest_commit"
+          if [ -f "$STATE_FILE" ]; then
+            LAST_HASH=$(cat $STATE_FILE)
+          else
+            LAST_HASH=""
+          fi
+          echo "上次构建: $LAST_HASH"
+          
+          if [ "$LATEST_HASH" != "$LAST_HASH" ]; then
+            echo "new_commit=true" >> $GITHUB_OUTPUT
+            echo "latest_hash=$LATEST_HASH" >> $GITHUB_OUTPUT
+          else
+            echo "new_commit=false" >> $GITHUB_OUTPUT
+          fi
+  build:
+    needs: check-updates
+    if: ${{ needs.check-updates.outputs.new_commit == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      
+      - name: 显示构建环境信息
+        run: |
+          lsb_release -a || true
+          uname -a
+          lscpu | grep -E 'Model name|Architecture|CPU MHz|Core'
+          free -h
+          df -h
+      
+      - name: 安装依赖
+        run: |
+          sudo sed -i "s/^Types: deb$/Types: deb deb-src/" /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt update
           sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
             libxext-dev llvm-19 libx11-dev libclc-19-dev libllvmspirvlib-19-dev clang-19 libclang-19-dev libclang-cpp19-dev llvm-spirv-19 libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
             libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
             libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
-          
-          python3 -m pip install --break-system-packages \
-            'meson>=1.4.0,<2'
-
-      - name: Configure minimal release build
-        shell: bash
+      
+      - name: 克隆 Mesa 正式版
         run: |
-          meson setup "${BUILD_DIR}" . \
-            --buildtype=release \
-            --prefix=/usr \
-            --libdir="${LIBDIR}" \
+          echo "📥 克隆 Mesa 仓库..."
+          git clone https://github.com/funnymdzz/mesa.git mesa
+          cd mesa
+          git checkout copilot/add-support-kbase-arm-driver
+          git pull
+          echo "🧾 当前分支和提交:"
+          git branch -v
+          git log -1 --oneline --decorate
+          
+          
+      - name: 自定义品牌
+        run: |
+          echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
+          cd mesa
+          sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
+          sed -i 's/"Mesa " PACKAGE_VERSION MESA_GIT_SHA1/"Qualcomm Snapdragon " PACKAGE_VERSION MESA_GIT_SHA1/' src/freedreno/vulkan/tu_device.cc
+          
+      - name: 构建 Mesa
+        run: |
+          cd mesa
+          BUILD_START=$(date +%s)
+          sudo mkdir -p /data/data/com.termux/files/usr/glibc
+          sudo chmod 777 -R /data
+          # 设置编译器和环境变量
+          export CC=clang
+          export CXX=clang++
+          export CFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
+          export CXXFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
+          export LDFLAGS="-flto=thin"
+          
+          mkdir -p builddir
+          meson setup builddir \
+            --libdir=lib \
+            -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Db_ndebug=true \
             -Dbuild-tests=false \
             -Ddisplay-info=disabled \
@@ -65,143 +117,69 @@ jobs:
             -Dlmsensors=disabled \
             -Dllvm=enabled \
             -Dmesa-clc=enabled \
-            -Dopengl=false \
+            -Dopengl=true \
             -Dpanfrost-kmds=kbase,panthor \
             -Dplatforms=x11 \
             -Dprecomp-compiler=enabled \
             -Dshared-glapi=disabled \
             -Dtools= \
             -Dvalgrind=disabled \
-            -Dvideo-codecs= \
+            -Dvideo-codecs=all \
             -Dvulkan-drivers=panfrost \
             -Dvulkan-layers= \
             -Dxmlconfig=disabled \
             -Dzstd=disabled
-
-      - name: Build with all available cores
-        run: meson compile -C "${BUILD_DIR}" -j "$(nproc)"
-
-      - name: Prepare tarball
-        shell: bash
+          
+          ninja -C builddir -j$(nproc)
+          ninja -C builddir install
+          
+          BUILD_END=$(date +%s)
+          echo "构建耗时: $((BUILD_END - BUILD_START)) 秒"
+          
+          VERSION=$(cat VERSION)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+      
+      - name: 打包构建产物
         run: |
-          set -euo pipefail
-          MESA_VERSION="$(tr -d '[:space:]' < VERSION)"
-          ASSET_VERSION="${MESA_VERSION}-git${GITHUB_SHA:0:12}"
-          BUNDLE_NAME="${PACKAGE_NAME}-${ASSET_VERSION}-aarch64"
-          BUNDLE_ROOT="${GITHUB_WORKSPACE}/${BUNDLE_NAME}"
+          echo "📦 开始打包 Mesa 产物..."
+          cd mesa
+          PACK_START=$(date +%s)
           
-          mkdir -p "${BUNDLE_ROOT}/lib" \
-            "${BUNDLE_ROOT}/share/vulkan/icd.d"
+          FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
+          tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
           
-          # Copy the built library
-          cp "${BUILD_DIR}/src/panfrost/vulkan/libvulkan_panfrost.so" \
-            "${BUNDLE_ROOT}/lib/libvulkan_panfrost_kbase.so"
-          strip --strip-unneeded \
-            "${BUNDLE_ROOT}/lib/libvulkan_panfrost_kbase.so"
+          cd ..
+          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
           
-          # Generate ICD manifest
-          python3 - \
-            "${BUILD_DIR}/src/panfrost/vulkan/panfrost_icd.aarch64.json" \
-            "${BUNDLE_ROOT}/share/vulkan/icd.d/panfrost_kbase_icd.aarch64.json" \
-            "libvulkan_panfrost_kbase.so" <<'PY'
-          import json
-          import sys
-          with open(sys.argv[1], encoding="utf-8") as source:
-              manifest = json.load(source)
-          manifest["ICD"]["library_path"] = sys.argv[3]
-          with open(sys.argv[2], "w", encoding="utf-8") as output:
-              json.dump(manifest, output, indent=4)
-              output.write("\n")
-          PY
-          
-          # Copy documentation
-          cp docs/panvk-kbase.md "${BUNDLE_ROOT}/README.md"
-          
-          # Create environment setup script
-          cat > "${BUNDLE_ROOT}/env.sh" <<'EOF'
-          # Source this file from Bash: . ./env.sh
-          PANVK_KBASE_ROOT="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-          export LD_LIBRARY_PATH="${PANVK_KBASE_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-          export VK_DRIVER_FILES="${PANVK_KBASE_ROOT}/share/vulkan/icd.d/panfrost_kbase_icd.aarch64.json"
-          EOF
-          chmod 755 "${BUNDLE_ROOT}/env.sh"
-          
-          # Create tarball
-          PACKAGE_FILE="${BUNDLE_NAME}.tar.gz"
-          tar -C "${GITHUB_WORKSPACE}" -czf "${PACKAGE_FILE}" "${BUNDLE_NAME}"
-          
-          echo "PACKAGE_FILE=${PACKAGE_FILE}" >> "${GITHUB_ENV}"
-
-      - name: Upload tarball artifact
+          PACK_END=$(date +%s)
+          echo "打包耗时: $((PACK_END - PACK_START)) 秒"
+        
+          echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
+      
+      - name: 上传构建产物到 Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mesa-panvk-kbase-ubuntu2404-aarch64
-          path: ${{ github.workspace }}/${{ env.PACKAGE_FILE }}
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload Meson logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: mesa-panvk-kbase-ubuntu2404-logs
-          path: ${{ github.workspace }}/${{ env.BUILD_DIR }}/meson-logs
-          if-no-files-found: ignore
-          retention-days: 7
-
-  publish-release:
-    name: Publish GitHub Release
-    needs: build-packages
-    if: >-
-      startsWith(github.ref, 'refs/tags/kbase-v') ||
-      inputs.release_tag != ''
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download packages
-        uses: actions/download-artifact@v4
-        with:
-          pattern: mesa-panvk-kbase-*-aarch64
-          path: release-assets
-          merge-multiple: true
-
-      - name: Generate checksums
-        shell: bash
+          name: mesa-artifacts-${{ env.VERSION }}-aarch64
+          path: |
+            ${{ env.FULL_TAR }}
+            ${{ env.FULL_TAR }}.sha256
+      
+      - name: 保存最新提交记录
+        if: ${{ needs.check-updates.outputs.latest_hash != '' }}
         run: |
-          cd release-assets
-          find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | sort -z | \
-            xargs -0 sha256sum > SHA256SUMS
-          cat SHA256SUMS
-
-      - name: Create or update release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REQUESTED_TAG: ${{ inputs.release_tag }}
+          echo "${{ needs.check-updates.outputs.latest_hash }}" > .mesa_latest_commit
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add .mesa_latest_commit || true
+          git commit -m "Update Mesa commit record" || true
+          git push || true
+      
+      - name: 输出总结信息
         run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/kbase-v* ]]; then
-            RELEASE_TAG="${GITHUB_REF_NAME}"
-          else
-            RELEASE_TAG="${REQUESTED_TAG}"
-          fi
-          
-          mapfile -t ASSETS < <(find release-assets -maxdepth 1 -type f -print | sort)
-          
-          if gh release view "${RELEASE_TAG}" \
-            --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            gh release edit "${RELEASE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --title "PanVK kbase ${RELEASE_TAG}" \
-              --notes-file .github/panvk-kbase-release-notes.md
-            gh release upload "${RELEASE_TAG}" "${ASSETS[@]}" \
-              --repo "${GITHUB_REPOSITORY}" --clobber
-          else
-            gh release create "${RELEASE_TAG}" "${ASSETS[@]}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --target "${GITHUB_SHA}" \
-              --title "PanVK kbase ${RELEASE_TAG}" \
-              --notes-file .github/panvk-kbase-release-notes.md
-          fi
+          echo "构建完成"
+          echo "版本: ${{ env.VERSION }}"
+          echo "提交: ${{ env.GIT_HASH }}"
+          echo "构建产物已保存到 Artifacts"
+          echo "- ${{ env.FULL_TAR }}"
