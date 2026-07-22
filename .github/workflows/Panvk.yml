@@ -1,6 +1,12 @@
 name: 测试版 PanVK-Mesa (aarch64, Auto Update + Detailed Log)
 on:
   workflow_dispatch:
+    inputs:
+      use_custom_branch:
+        description: '使用自定义分支 (copilot/add-support-kbase-arm-driver)'
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - main
@@ -64,17 +70,33 @@ jobs:
             libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
       
-      - name: 克隆 Mesa 正式版
+      - name: 克隆 Mesa 仓库
         run: |
           echo "📥 克隆 Mesa 仓库..."
           git clone https://github.com/funnymdzz/mesa.git mesa
+          cd mesa
+          echo "🧾 当前分支和提交:"
+          git branch -v
+          git log -1 --oneline --decorate
+      
+      - name: 切换到自定义分支（可选）
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.use_custom_branch == 'true' }}
+        run: |
+          echo "🔀 切换到自定义分支: copilot/add-support-kbase-arm-driver"
           cd mesa
           git checkout copilot/add-support-kbase-arm-driver
           git pull
           echo "🧾 当前分支和提交:"
           git branch -v
           git log -1 --oneline --decorate
-          
+      
+      - name: 显示当前使用的分支
+        run: |
+          cd mesa
+          echo "📌 当前使用的分支:"
+          git branch --show-current
+          echo "最新提交:"
+          git log -1 --oneline --decorate
           
       - name: 自定义品牌
         run: |
@@ -146,6 +168,24 @@ jobs:
           echo "📦 开始打包 Mesa 产物..."
           cd mesa
           PACK_START=$(date +%s)
+          
+          # 只剥离 libvulkan_panfrost.so 的调试符号
+          echo "🔧 剥离 libvulkan_panfrost.so 调试符号..."
+          LIB_PATH="/data/data/com.termux/files/usr/glibc/lib/libvulkan_panfrost.so"
+          if [ -f "$LIB_PATH" ]; then
+            # 显示剥离前大小
+            echo "剥离前大小："
+            ls -lh "$LIB_PATH"
+            
+            # 执行剥离
+            strip --strip-unneeded "$LIB_PATH"
+            
+            # 显示剥离后大小
+            echo "剥离后大小："
+            ls -lh "$LIB_PATH"
+          else
+            echo "⚠️ 警告：未找到 libvulkan_panfrost.so"
+          fi
           
           FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
