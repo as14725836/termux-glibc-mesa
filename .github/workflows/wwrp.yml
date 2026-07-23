@@ -99,7 +99,7 @@ jobs:
             -Dbuildtype=release \
             -Dplatforms=x11 \
             -Degl-native-platform=x11 \
-            -Dglx=dri \
+            -Dglx= \
             -Dopengl=false \
             -Dgles1=disabled \
             -Dgles2=disabled \
