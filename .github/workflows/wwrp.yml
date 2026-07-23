@@ -98,8 +98,7 @@ jobs:
             -Dprefix=/data/data/com.termux/files/usr/glibc \
             -Dbuildtype=release \
             -Dplatforms=x11 \
-            -Degl-native-platform=x11 \
-            -Dglx= \
+            -Dglx=disabled \
             -Dopengl=false \
             -Dgles1=disabled \
             -Dgles2=disabled \
