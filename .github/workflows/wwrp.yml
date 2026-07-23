@@ -60,7 +60,7 @@ jobs:
           sudo apt update
           sudo apt install -y glslang-tools libxrandr-dev libxxf86vm-dev libxcb-shm0-dev libxcb-glx0-dev \
             libxext-dev llvm-19 libx11-dev libxcb-dri2-0-dev libx11-xcb-dev libxcb1-dev libxcb-dri3-dev libxcb-present-dev \
-            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
+            libxcb-randr0-dev libxcb-sync-dev gcc g++ libxcb-xfixes0-dev libxshmfence-dev libdrm-dev \
             libgbm-dev libegl1-mesa-dev libexpat1-dev libwayland-dev python3-pip
           pip3 install --user meson ninja mako
       
@@ -86,8 +86,8 @@ jobs:
           sudo chmod 777 -R /data
 
           # 设置编译器和环境变量
-          export CC=clang
-          export CXX=clang++
+          export CC=gcc
+          export CXX=g++
           export CFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
           export CXXFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
           export LDFLAGS="-flto=thin"
