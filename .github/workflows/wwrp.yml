@@ -88,10 +88,7 @@ jobs:
           # 设置编译器和环境变量
           export CC=gcc
           export CXX=g++
-          export CFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
-          export CXXFLAGS="-O3 -fno-plt -flto=thin -Wno-error -Wno-deprecated-declarations"
-          export LDFLAGS="-flto=thin"
-          
+      
           mkdir -p builddir
           meson setup builddir \
             --libdir=lib \
