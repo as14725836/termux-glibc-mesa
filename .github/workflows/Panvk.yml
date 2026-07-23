@@ -139,7 +139,7 @@ jobs:
             -Dlmsensors=disabled \
             -Dllvm=enabled \
             -Dmesa-clc=enabled \
-            -Dopengl=true \
+            -Dopengl=false \
             -Dpanfrost-kmds=kbase,panthor \
             -Dplatforms=x11 \
             -Dprecomp-compiler=enabled \
