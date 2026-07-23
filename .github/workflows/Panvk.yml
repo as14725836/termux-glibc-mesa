@@ -73,7 +73,7 @@ jobs:
       - name: 克隆 Mesa 仓库
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/funnymdzz/mesa.git mesa
+          git clone https://github.com/leegao/mesa-26.2 mesa
           cd mesa
           echo "🧾 当前分支和提交:"
           git branch -v
