@@ -76,6 +76,15 @@ jobs:
           echo "LATEST_TAG=$LATEST_TAG" >> $GITHUB_ENV
           echo "🧾 最新提交:"
           git log -1 --oneline --decorate
+
+          echo "补丁应用"
+          # 应用自定义补丁
+          for patch in $GITHUB_WORKSPACE/patch/*.patch; do
+            if [ -f "$patch" ]; then
+              echo "Applying $patch..."
+              patch -p1 < "$patch" || true
+            fi
+          done
         
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
