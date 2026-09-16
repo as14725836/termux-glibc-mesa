@@ -67,8 +67,11 @@ jobs:
       - name: 克隆 Mesa 正式版
         run: |
           echo "📥 克隆 Mesa 仓库..."
-          git clone https://github.com/fish4terrisa-MSDSM/mesa-vulkan-wrapper.git mesa
+          git clone https://github.com/lfdevs/mesa-for-android-container.git mesa
           cd mesa
+          git checkout termux/vulkan-wrapper-android
+
+          
           
       - name: 自定义品牌
         run: |
