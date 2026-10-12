@@ -149,7 +149,7 @@ jobs:
             -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast \
+            -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dmediafoundation-codecs=all \
@@ -187,24 +187,18 @@ jobs:
           PACK_START=$(date +%s)
           TAR_NAME="termux-glibc-mesa-${VERSION}-aarch64.tar.gz"
           tar -czvf "../${TAR_NAME}" -C builddir/src/freedreno/vulkan libvulkan_freedreno.so
-          FULL_TAR="glibc-mesa-${VERSION}-aarch64.tar.gz"
-          tar -czvf "../${FULL_TAR}" -C /data/data/com.termux/files/usr glibc
           cd ..
           sha256sum "${TAR_NAME}" > "${TAR_NAME}.sha256"
-          sha256sum "${FULL_TAR}" > "${FULL_TAR}.sha256"
           PACK_END=$(date +%s)
           echo "打包耗时: $((PACK_END - PACK_START)) 秒"
           echo "TAR_NAME=${TAR_NAME}" >> $GITHUB_ENV
-          echo "FULL_TAR=${FULL_TAR}" >> $GITHUB_ENV
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: mesa-artifacts-${{ env.VERSION }}-aarch64
           path: |
             ${{ env.TAR_NAME }}
-            ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
-            ${{ env.FULL_TAR }}.sha256
       - name: 发布到 GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -216,9 +210,7 @@ jobs:
             - 提交: `${{ env.GIT_HASH }}`
           files: |
             ${{ env.TAR_NAME }}
-            ${{ env.FULL_TAR }}
             ${{ env.TAR_NAME }}.sha256
-            ${{ env.FULL_TAR }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
