@@ -149,7 +149,7 @@ jobs:
             -Dgallium-drivers=zink,freedreno,llvmpipe,softpipe \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno \
+            -Dvulkan-drivers=freedreno,swrast \
             -Dfreedreno-kmds=kgsl \
             -Dvideo-codecs=all \
             -Dmediafoundation-codecs=all \
