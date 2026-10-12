@@ -1,42 +1,79 @@
 From: termux-glibc-mesa <termux-glibc-mesa@local>
-Subject: [PATCH] egl,glx: default to zink on Android/KGSL
+Subject: [PATCH] egl,glx: use Kopper (Vulkan) by default on Android/KGSL
 
-On Adreno devices exposed through KGSL (Android's out-of-tree DRM
-driver) there is no upstream freedreno *gallium* KMD: the only supported
-render path is Turnip (Vulkan, tu_knl_kgsl.cc) reached through zink via
-Kopper.  Upstream only falls back to zink *after* the in-tree driver has
-already failed to initialize, which is a wasted round of screen setup
-and, on GLX, frequently never happens at all because
-loader_get_driver_for_fd() cannot resolve a driver name for a KGSL fd.
+On Adreno devices exposed through KGSL (Android's out-of-tree DRM driver)
+there is no upstream freedreno *gallium* KMD: the only supported render
+path is Turnip (Vulkan, tu_knl_kgsl.cc) reached through zink via Kopper.
+Upstream only falls back to zink *after* the in-tree driver has failed to
+initialize, which on a KGSL-only system is fatal rather than merely slow:
 
-Make zink the preferred driver unless the user explicitly overrode it
-via MESA_LOADER_DRIVER_OVERRIDE or GALLIUM_DRIVER.
+  * EGL (platform_x11.c): dri3_x11_connect() calls x11_dri3_open(), which
+    needs a DRI3 render node fd.  KGSL has no /dev/dri/renderD*, and
+    termux-x11 does not implement the DRI3 Open request either, so the
+    probe fails and dri2_dpy->driver_name stays NULL.  If the X server
+    also lacks DRI3 1.2 BuffersFromPixmap (x11_dri3_has_multibuffer()
+    returns false), dri2_initialize_x11() returns EGL_FALSE outright and
+    EGL silently degrades to swrast:
 
-  * EGL: disp->Options.Zink defaults to TRUE when
-    MESA_LOADER_DRIVER_OVERRIDE is unset (or set to "zink"), instead of
-    only when it is exactly "zink".
-  * GLX: pre-elect GLX_DRIVER_ZINK_YES in the same situation, so Kopper
-    is used from the first screen probe.
+        EGL driver name: swrast
+        MESA-EGL: warning: DRI3 error: Could not get DRI3 device
 
-Without this, GL clients on Adreno+KGSL silently end up on llvmpipe or
-fail to create a screen.
+  * GLX (glxext.c): the missing-multibuffer check goes straight to
+    init_fail with "DRI3 not available" whenever Zink was elected.
+
+Kopper does not need any of that.  Its presentation path is
+vkQueuePresentKHR() on a VkSwapchainKHR created from the XCB surface,
+which lands in the Vulkan WSI DRI3 code and is exactly what the KGSL
+WSI patch supports.  So:
+
+  * EGL: default disp->Options.Zink to TRUE when
+    MESA_LOADER_DRIVER_OVERRIDE is unset (or "zink") and GALLIUM_DRIVER
+    is unset, and treat Zink as forced when Kopper is available so the
+    DRI3 probe is skipped instead of aborting initialisation.
+  * GLX: pre-elect GLX_DRIVER_ZINK_YES in the same situation, and keep
+    the "DRI3 not available" failure only for non-Kopper drivers.
+
+Users can still opt out with MESA_LOADER_DRIVER_OVERRIDE,
+GALLIUM_DRIVER or LIBGL_KOPPER_DISABLE.
 ---
 --- a/src/egl/main/eglapi.c
 +++ b/src/egl/main/eglapi.c
-@@ -684,7 +684,12 @@
+@@ -684,7 +684,14 @@
                   "Found 'LIBGL_ALWAYS_SOFTWARE' set, will use a CPU renderer");
  
        const char *env = os_get_option("MESA_LOADER_DRIVER_OVERRIDE");
 -      disp->Options.Zink = env && !strcmp(env, "zink");
 +      /* Prefer zink unless the user explicitly asked for something else.
 +       * On Android/KGSL this is the only hardware path (Turnip via
-+       * Kopper); upstream would only reach it after a failed probe.
++       * Kopper): there is no DRM render node, so the DRI3 probe fails
++       * and upstream would only reach zink after a wasted round of
++       * screen setup, or never.
 +       */
 +      disp->Options.Zink = (!env || !strcmp(env, "zink")) &&
 +                           !os_get_option("GALLIUM_DRIVER");
  
        const char *gallium_hud_env = os_get_option("GALLIUM_HUD");
        disp->Options.GalliumHudWarn =
+--- a/src/egl/drivers/dri2/platform_x11.c
++++ b/src/egl/drivers/dri2/platform_x11.c
+@@ -1234,8 +1234,16 @@
+    /* True if we're going to force-enable a HW Zink driver, even if the X
+     * server is missing a bunch of features.
+     */
++   /* On Android/KGSL there is no DRM render node, so the X11 DRI3 probe
++    * (dri3_x11_connect) always fails, and because termux-x11 does not
++    * implement the DRI3 Open request, driver_name cannot be resolved
++    * either.  Upstream then returns EGL_FALSE here and EGL silently
++    * falls back to swrast.  Treat Zink as forced whenever Kopper is
++    * available: that selects the pure-Vulkan (Turnip/KGSL)
++    * presentation path which does not need dri3_open at all.
++    */
+    const bool force_zink =
+-      disp->Options.Zink && debug_get_bool_option("LIBGL_KOPPER_DRI2", false);
++      disp->Options.Zink && !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false);
+ 
+    /*
+     * Every hardware driver_name is set using strdup. Doing the same in
 --- a/src/glx/glxext.c
 +++ b/src/glx/glxext.c
 @@ -989,7 +989,12 @@
@@ -45,7 +82,7 @@ fail to create a screen.
  
 -   if (env && !strcmp(env, "zink"))
 +   /* Prefer zink unless the user explicitly asked for something else.
-+    * On Android/KGSL the in-tree freedreno gallium KMD is absent, and
++    * On Android/KGSL the in-tree freedreno gallium KMD is absent and
 +    * loader_get_driver_for_fd() cannot name a driver for a KGSL fd, so
 +    * electing zink up-front is the only way Kopper gets used.
 +    */
@@ -53,3 +90,20 @@ fail to create a screen.
        glx_driver |= GLX_DRIVER_ZINK_YES;
  
     dpyPriv->drawHash = __glxHashCreate();
+@@ -1025,7 +1030,15 @@
+       glx_driver |= GLX_DRIVER_SW;
+ 
+ #if !defined(GLX_USE_APPLEGL)
+-   if (!dpyPriv->has_multibuffer && glx_accel && !debug_get_bool_option("LIBGL_KOPPER_DRI2", false)) {
++   /* termux-x11 does not implement DRI3 1.2 BuffersFromPixmap, so
++    * has_multibuffer is always false there.  That must not be fatal for
++    * Kopper/Zink: presentation goes through Vulkan
++    * (VkSwapchainKHR on the XCB surface), not through DRI3
++    * pixmap_from_buffer, so the multibuffer requirement does not apply.
++    * Keep the upstream check only for non-Kopper drivers.
++    */
++   if (!dpyPriv->has_multibuffer && glx_accel && !kopper &&
++       !debug_get_bool_option("LIBGL_KOPPER_DRI2", false)) {
+       if (glx_driver & GLX_DRIVER_ZINK_YES) {
+          /* only print error if zink was explicitly requested */
+          CriticalErrorMessageF("DRI3 not available\n");

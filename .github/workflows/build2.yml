@@ -107,6 +107,10 @@ jobs:
             || { echo "::error::EGL 默认 zink 补丁未生效"; exit 1; }
           grep -q '!env || !strcmp(env, "zink")' src/glx/glxext.c \
             || { echo "::error::GLX 默认 zink 补丁未生效"; exit 1; }
+          grep -q 'LIBGL_KOPPER_DISABLE' src/egl/drivers/dri2/platform_x11.c \
+            || { echo "::error::EGL Kopper 强制 zink 补丁未生效 (platform_x11.c)"; exit 1; }
+          grep -q '!kopper &&' src/glx/glxext.c \
+            || { echo "::error::GLX Kopper multibuffer 免责补丁未生效"; exit 1; }
           grep -q 'FD710' src/freedreno/common/freedreno_devices.py \
             || { echo "::warning::AD7xx GPU ID 补丁未生效"; }
           echo "✅ 补丁校验通过"
