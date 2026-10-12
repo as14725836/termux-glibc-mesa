@@ -78,14 +78,39 @@ jobs:
           git log -1 --oneline --decorate
 
           echo "补丁应用"
-          # 应用自定义补丁
-          for patch in $GITHUB_WORKSPACE/patch/*.patch; do
-            if [ -f "$patch" ]; then
-              echo "Applying $patch..."
-              patch -p1 < "$patch" || true
+          # 应用 patch/ 下的全部自定义补丁，任何一个失败都中止构建。
+          # 顺序由文件名前缀决定（04/05/06/07 ...）。
+          shopt -s nullglob
+          PATCHES=($GITHUB_WORKSPACE/patch/*.patch)
+          if [ ${#PATCHES[@]} -eq 0 ]; then
+            echo "::error::patch/ 目录下没有任何补丁"
+            exit 1
+          fi
+          for patch in "${PATCHES[@]}"; do
+            echo "=================================================="
+            echo "Applying $(basename "$patch")..."
+            if ! patch -p1 --forward --fuzz=3 < "$patch"; then
+              echo "::error::补丁应用失败: $(basename "$patch")"
+              exit 1
             fi
           done
-        
+          echo "=================================================="
+
+          echo "🔍 校验补丁效果..."
+          grep -q 'image->drm_modifier = 1274' src/vulkan/wsi/wsi_common.c \
+            || { echo "::error::KGSL DRI3 补丁未生效 (wsi_common.c)"; exit 1; }
+          grep -q 'is_tu_kgsl' src/vulkan/wsi/wsi_common.h \
+            || { echo "::error::KGSL DRI3 补丁未生效 (wsi_common.h)"; exit 1; }
+          grep -q 'kgsl_get_info' src/freedreno/vulkan/tu_wsi.cc \
+            || { echo "::error::Turnip KGSL WSI 补丁未生效"; exit 1; }
+          grep -q '!env || !strcmp(env, "zink")' src/egl/main/eglapi.c \
+            || { echo "::error::EGL 默认 zink 补丁未生效"; exit 1; }
+          grep -q '!env || !strcmp(env, "zink")' src/glx/glxext.c \
+            || { echo "::error::GLX 默认 zink 补丁未生效"; exit 1; }
+          grep -q 'FD710' src/freedreno/common/freedreno_devices.py \
+            || { echo "::warning::AD7xx GPU ID 补丁未生效"; }
+          echo "✅ 补丁校验通过"
+
           echo "🔧 自定义品牌: Turnip → Qualcomm Snapdragon"
           sed -i 's/Turnip Adreno (TM) %s%s/Qualcomm Snapdragon Adreno (TM) %s%s/' src/freedreno/vulkan/tu_device.cc
           sed -i 's/"turnip Mesa driver"/"Qualcomm Snapdragon Driver"/' src/freedreno/vulkan/tu_device.cc
@@ -138,6 +163,23 @@ jobs:
           GIT_HASH=$(git rev-parse --short HEAD)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_ENV
+      - name: 校验产物中的 KGSL / DRI3 / zink 支持
+        run: |
+          cd mesa
+          echo "🔎 检查构建出的驱动库..."
+          ls -la builddir/src/freedreno/vulkan/libvulkan_freedreno.so
+          ls -la builddir/src/gallium/targets/dri/libgallium_dri.so 2>/dev/null || true
+
+          echo "--- Turnip Vulkan 驱动应包含 KGSL 后端 ---"
+          (nm -D --defined-only builddir/src/freedreno/vulkan/libvulkan_freedreno.so 2>/dev/null \
+             | grep -i kgsl | head -5) || echo "(nm 不可用，跳过符号检查)"
+
+          echo "--- zink gallium 驱动 ---"
+          find builddir -name '*zink*' -o -name 'libgallium_dri.so' | head -5
+
+          echo "--- GLX/EGL DRI 驱动 ---"
+          find builddir/src -name 'libGLX_mesa.so*' -o -name 'libEGL_mesa.so*' | head -5
+          echo "✅ 产物检查完成"
       - name: 打包构建产物
         run: |
           echo "📦 开始打包 Mesa 产物..."

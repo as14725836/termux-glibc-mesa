@@ -1,0 +1,55 @@
+From: termux-glibc-mesa <termux-glibc-mesa@local>
+Subject: [PATCH] egl,glx: default to zink on Android/KGSL
+
+On Adreno devices exposed through KGSL (Android's out-of-tree DRM
+driver) there is no upstream freedreno *gallium* KMD: the only supported
+render path is Turnip (Vulkan, tu_knl_kgsl.cc) reached through zink via
+Kopper.  Upstream only falls back to zink *after* the in-tree driver has
+already failed to initialize, which is a wasted round of screen setup
+and, on GLX, frequently never happens at all because
+loader_get_driver_for_fd() cannot resolve a driver name for a KGSL fd.
+
+Make zink the preferred driver unless the user explicitly overrode it
+via MESA_LOADER_DRIVER_OVERRIDE or GALLIUM_DRIVER.
+
+  * EGL: disp->Options.Zink defaults to TRUE when
+    MESA_LOADER_DRIVER_OVERRIDE is unset (or set to "zink"), instead of
+    only when it is exactly "zink".
+  * GLX: pre-elect GLX_DRIVER_ZINK_YES in the same situation, so Kopper
+    is used from the first screen probe.
+
+Without this, GL clients on Adreno+KGSL silently end up on llvmpipe or
+fail to create a screen.
+---
+--- a/src/egl/main/eglapi.c
++++ b/src/egl/main/eglapi.c
+@@ -684,7 +684,12 @@
+                  "Found 'LIBGL_ALWAYS_SOFTWARE' set, will use a CPU renderer");
+ 
+       const char *env = os_get_option("MESA_LOADER_DRIVER_OVERRIDE");
+-      disp->Options.Zink = env && !strcmp(env, "zink");
++      /* Prefer zink unless the user explicitly asked for something else.
++       * On Android/KGSL this is the only hardware path (Turnip via
++       * Kopper); upstream would only reach it after a failed probe.
++       */
++      disp->Options.Zink = (!env || !strcmp(env, "zink")) &&
++                           !os_get_option("GALLIUM_DRIVER");
+ 
+       const char *gallium_hud_env = os_get_option("GALLIUM_HUD");
+       disp->Options.GalliumHudWarn =
+--- a/src/glx/glxext.c
++++ b/src/glx/glxext.c
+@@ -989,7 +989,12 @@
+    Bool kopper = !debug_get_bool_option("LIBGL_KOPPER_DISABLE", false);
+ #endif
+ 
+-   if (env && !strcmp(env, "zink"))
++   /* Prefer zink unless the user explicitly asked for something else.
++    * On Android/KGSL the in-tree freedreno gallium KMD is absent, and
++    * loader_get_driver_for_fd() cannot name a driver for a KGSL fd, so
++    * electing zink up-front is the only way Kopper gets used.
++    */
++   if (!env || !strcmp(env, "zink"))
+       glx_driver |= GLX_DRIVER_ZINK_YES;
+ 
+    dpyPriv->drawHash = __glxHashCreate();
