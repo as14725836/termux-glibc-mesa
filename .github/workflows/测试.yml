@@ -111,7 +111,7 @@ jobs:
             -Dgles2=enabled \
             -Dglvnd=disabled \
             -Degl=enabled \
-            -Dllvm=enabled \
+            -Dllvm=disabled \
             -Dshared-llvm=enabled \
             -Dshader-cache=enabled \
             -Dshared-glapi=enabled \
@@ -122,14 +122,14 @@ jobs:
             -Dmicrosoft-clc=disabled \
             -Dgallium-rusticl=false \
             -Dgallium-extra-hud=true \
-            -Dgallium-drivers=zink,freedreno,virgl,llvmpipe,softpipe \
+            -Dgallium-drivers=zink,freedreno \
             -Dgallium-rusticl-enable-drivers=freedreno \
             -Dshader-cache-default=true \
-            -Dvulkan-drivers=freedreno,swrast,virtio \
+            -Dvulkan-drivers=freedreno \
             -Dfreedreno-kmds=kgsl \
             -Dvulkan-layers=anti-lag \
             -Dvideo-codecs=all \
-            -Dgbm=enabled \
+            -Dgbm=disabled \
             -Db_ndebug=true \
             -Dstrip=true
           
